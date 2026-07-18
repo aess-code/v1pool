@@ -81,11 +81,11 @@ export default function Header() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity group">
             <Image
-              src="/icon.png"
+              src="/icon.svg"
               alt="Pulse"
               width={32}
               height={32}
-              className="h-8 w-8 object-contain drop-shadow-[0_0_6px_rgba(99,102,241,0.6)]"
+              className="h-8 w-8 object-contain"
               priority
             />
             <span className="font-bold text-lg tracking-tight text-zinc-100 group-hover:text-white transition-colors">

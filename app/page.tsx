@@ -136,11 +136,11 @@ export default function HomePage() {
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <Image
-              src="/icon.png"
+              src="/icon.svg"
               alt="Pulse"
               width={48}
               height={48}
-              className="h-12 w-12 object-contain drop-shadow-[0_0_12px_rgba(99,102,241,0.7)]"
+              className="h-12 w-12 object-contain"
               priority
             />
             <h1 className="text-3xl font-bold tracking-tight text-zinc-100">Pulse</h1>
