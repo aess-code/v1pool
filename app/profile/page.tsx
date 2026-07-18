@@ -5,13 +5,11 @@ import {
   useAccount,
   useBalance,
   useDisconnect,
-  useChainId,
   useReadContract,
   useReadContracts,
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { USDT_ADDRESS, MARKET_ABI, FACTORY_ABI, FACTORY_ADDRESS } from "../../constants";
 import Link from "next/link";
 import {
@@ -26,8 +24,6 @@ import {
   Copy,
   Check,
   ExternalLink,
-  Link2,
-  LogOut,
 } from "lucide-react";
 import { Address } from "viem";
 import { toast } from "sonner";
@@ -189,25 +185,8 @@ function CreatedItem({ marketAddress }: { marketAddress: Address }) {
 // ── 主页面 ────────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-
-  const CHAIN_NAMES: Record<number, string> = {
-    1:        "以太坊主网",
-    11155111: "Sepolia 测试网",
-    137:      "Polygon 主网",
-    80001:    "Polygon Mumbai",
-    42161:    "Arbitrum One",
-    421614:   "Arbitrum Sepolia",
-    8453:     "Base 主网",
-    84532:    "Base Sepolia",
-    10:       "Optimism 主网",
-    56:       "BNB Chain",
-  };
-  const networkName = CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
-  const { disconnect } = useDisconnect();
   const [activeTab, setActiveTab] = useState<"created" | "positions">("created");
   const [copied, setCopied] = useState(false);
-  const [shared, setShared] = useState(false);
 
   const handleCopyAddress = () => {
     if (!address) return;
@@ -232,7 +211,7 @@ export default function ProfilePage() {
 
   const markets = (allMarkets as Address[] | undefined) || [];
 
-  // 读取每个市场的创建者、用户持仓、totalVolume（用于过滤和累计收益计算）
+  // 读取每个市场的创建者和用户持仓（用于过滤）
   const { data: marketDetails } = useReadContracts({
     contracts: markets.flatMap((addr) => [
       { address: addr, abi: MARKET_ABI, functionName: "creator" },
@@ -242,7 +221,6 @@ export default function ProfilePage() {
         functionName: "getUserPosition",
         args: address ? [address] : ["0x0000000000000000000000000000000000000000"],
       },
-      { address: addr, abi: MARKET_ABI, functionName: "totalVolume" },
     ]),
     query: { enabled: markets.length > 0 && !!address },
   });
@@ -250,25 +228,12 @@ export default function ProfilePage() {
   const createdMarkets: Address[]  = [];
   const positionMarkets: Address[] = [];
   let pendingClaimCount = 0;
-  let totalCreatorEarnings = 0n; // 创建者累计收益 = sum(totalVolume) × 0.5%
-
-  const handleShare = () => {
-    const text = `我在 Macket 上参与了 ${positionMarkets.length} 个预测市场，创建了 ${createdMarkets.length} 个市场。\n来挑战我的判断力 👉 https://openmacket.vercel.app`;
-    navigator.clipboard.writeText(text);
-    setShared(true);
-    setTimeout(() => setShared(false), 2000);
-  };
 
   if (marketDetails && address) {
     markets.forEach((addr, i) => {
-      const creator      = marketDetails[i * 3]?.result as Address | undefined;
-      const position     = marketDetails[i * 3 + 1]?.result as [bigint, bigint, bigint, bigint] | undefined;
-      const totalVolume  = marketDetails[i * 3 + 2]?.result as bigint | undefined;
-      if (creator?.toLowerCase() === address.toLowerCase()) {
-        createdMarkets.push(addr);
-        // 创建者手续费 = totalVolume × 0.5%（FEE_CREATOR = 50 / 10000）
-        if (totalVolume) totalCreatorEarnings += (totalVolume * 50n) / 10000n;
-      }
+      const creator  = marketDetails[i * 2]?.result as Address | undefined;
+      const position = marketDetails[i * 2 + 1]?.result as [bigint, bigint, bigint, bigint] | undefined;
+      if (creator?.toLowerCase() === address.toLowerCase()) createdMarkets.push(addr);
       if (position && (position[0] > 0n || position[1] > 0n)) positionMarkets.push(addr);
     });
   }
@@ -302,22 +267,11 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 pb-20">
       {/* 顶部导航 */}
-      <div className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 px-4 py-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 text-zinc-400 hover:text-zinc-200 transition-colors">
+      <div className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 px-4 py-4">
+        <Link href="/" className="flex items-center gap-2 text-zinc-400 hover:text-zinc-200 transition-colors w-fit">
           <ArrowLeft className="w-5 h-5" />
           <span className="font-medium">返回</span>
         </Link>
-        <button
-          onClick={handleShare}
-          className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors px-3 py-1.5 rounded-lg hover:bg-zinc-800"
-          title="复制分享文案"
-        >
-          {shared ? (
-            <><Check className="w-4 h-4 text-emerald-400" /><span className="text-sm text-emerald-400">已复制</span></>
-          ) : (
-            <><Link2 className="w-4 h-4" /><span className="text-sm">分享</span></>
-          )}
-        </button>
       </div>
 
       <main className="max-w-3xl mx-auto px-4 pt-6 space-y-4">
@@ -351,7 +305,7 @@ export default function ProfilePage() {
                   <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
-              <p className="text-sm text-indigo-400/80">{networkName}</p>
+              <p className="text-sm text-indigo-400/80">Sepolia 测试网</p>
             </div>
           </div>
           <div>
@@ -360,30 +314,6 @@ export default function ProfilePage() {
               <span className="text-3xl font-bold text-white">{formattedBalance}</span>
               <span className="text-indigo-400 font-medium">USDT</span>
             </div>
-          </div>
-          {/* 切换网络 + 退出登录 */}
-          <div className="flex items-center justify-between mt-5 pt-4 border-t border-indigo-500/20">
-            <ConnectButton.Custom>
-              {({ chain, openChainModal }) => (
-                <button
-                  onClick={openChainModal}
-                  className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-700/60 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  {chain?.hasIcon && chain.iconUrl && (
-                    <img src={chain.iconUrl} alt={chain.name} className="w-3.5 h-3.5 rounded-full" />
-                  )}
-                  <span>{chain?.name ?? networkName}</span>
-                  <span className="text-zinc-600">▾</span>
-                </button>
-              )}
-            </ConnectButton.Custom>
-            <button
-              onClick={() => disconnect()}
-              className="flex items-center gap-1.5 text-xs text-rose-400/70 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              退出登录
-            </button>
           </div>
         </div>
 
@@ -409,7 +339,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* 创建者累计收益（链上 totalVolume × 0.5%）*/}
+        {/* 创建者累计收益（占位，后续接链上数据）*/}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
           <div className="flex items-center gap-2 text-zinc-400 mb-2">
             <TrendingUp className="w-4 h-4" />
@@ -417,13 +347,12 @@ export default function ProfilePage() {
           </div>
           <div className="flex items-center justify-between">
             <div className="text-2xl font-bold text-emerald-400">
-              +{(Number(totalCreatorEarnings) / 1_000_000).toFixed(4)} <span className="text-sm text-emerald-500/50 font-normal">USDT</span>
+              +0.00 <span className="text-sm text-emerald-500/50 font-normal">USDT</span>
             </div>
             <div className="w-8 h-8 bg-emerald-500/10 rounded-full flex items-center justify-center">
               <span className="text-lg">💰</span>
             </div>
           </div>
-          <p className="text-xs text-zinc-600 mt-1">基于你创建市场的累计成交量 × 0.5%</p>
         </div>
 
         {/* 标签页 */}

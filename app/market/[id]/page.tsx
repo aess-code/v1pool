@@ -11,8 +11,8 @@ import {
   useAccount,
 } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
-import { MARKET_ABI, USDT_ABI, USDT_ADDRESS } from "../../../constants";
-import { parseUnits, formatUnits, Address, maxUint256 } from "viem";
+import { MARKET_ABI, USDT_ABI, USDT_ADDRESS, YES, NO } from "../../../constants";
+import { parseUnits, formatUnits, Address } from "viem";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -428,7 +428,7 @@ export default function MarketDetailPage() {
     try {
       await writeContractAsync({
         address: USDT_ADDRESS, abi: USDT_ABI, functionName: "approve",
-        args: [marketAddress, maxUint256],
+        args: [marketAddress, amountBigInt * 2n],
       });
       toast.info("等待授权确认...");
     } catch (err: unknown) {
@@ -440,13 +440,13 @@ export default function MarketDetailPage() {
 
   const handleTrade = async () => {
     if (!amountBigInt || amountBigInt === 0n) { toast.error("请输入金额"); return; }
-    const isYes = side === "yes";
+    const sideValue = side === "yes" ? YES : NO;
     try {
       if (tab === "buy") {
-        await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "buy", args: [isYes, amountBigInt] });
+        await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "buy", args: [sideValue, amountBigInt] });
         toast.info("买入交易已提交...");
       } else {
-        await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "sell", args: [isYes, amountBigInt] });
+        await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "sell", args: [sideValue, amountBigInt] });
         toast.info("卖出交易已提交...");
       }
     } catch (err: unknown) {
@@ -458,7 +458,7 @@ export default function MarketDetailPage() {
   const handleRequestClose = async () => {
     setShowCloseConfirm(false);
     try {
-      await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "initiateClose" });
+      await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "requestClose" });
       toast.info("申请关闭已提交，21 天倒计时开始...");
     } catch (err: unknown) {
       const e = err as { shortMessage?: string; message?: string };
@@ -834,12 +834,12 @@ export default function MarketDetailPage() {
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-3 mb-4">
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs">
-                    <span className="text-zinc-600">手续费 (1%)</span>
-                    <span className="text-zinc-400">-{(parseFloat(amount) * 0.01).toFixed(4)} USDT</span>
+                    <span className="text-zinc-600">手续费 (0.5%)</span>
+                    <span className="text-zinc-400">-{(parseFloat(amount) * 0.005).toFixed(4)} USDT</span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-zinc-500 font-medium">{tab === "buy" ? "实际买入" : "实际到账"}</span>
-                    <span className="text-white font-medium">{(parseFloat(amount) * 0.99).toFixed(4)} USDT</span>
+                    <span className="text-white font-medium">{(parseFloat(amount) * 0.995).toFixed(4)} USDT</span>
                   </div>
                 </div>
               </div>

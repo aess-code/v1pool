@@ -4,13 +4,18 @@ import React from "react";
 import Link from "next/link";
 import { useReadContracts } from "wagmi";
 import { MARKET_ABI } from "../constants";
-import { Share2, TrendingUp, TrendingDown, Users } from "lucide-react";
+import { Share2, TrendingUp, TrendingDown, Users, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Address } from "viem";
 
 interface MarketCardProps {
   address: Address;
 }
+
+// 市场状态枚举（与合约一致）
+const STATUS_OPEN    = 0;
+const STATUS_CLOSING = 1;
+const STATUS_SETTLED = 2;
 
 export default function MarketCard({ address }: MarketCardProps) {
   const { data, isLoading } = useReadContracts({
@@ -20,17 +25,24 @@ export default function MarketCard({ address }: MarketCardProps) {
       { address, abi: MARKET_ABI, functionName: "getTVL" },
       { address, abi: MARKET_ABI, functionName: "status" },
       { address, abi: MARKET_ABI, functionName: "createdAt" },
+      { address, abi: MARKET_ABI, functionName: "timeUntilSettlement" },
     ],
   });
 
-  const question = data?.[0]?.result as string | undefined;
-  const confidence = data?.[1]?.result as bigint | undefined;
-  const tvl = data?.[2]?.result as bigint | undefined;
-  const status = data?.[3]?.result as number | undefined;
-  const createdAt = data?.[4]?.result as bigint | undefined;
+  const question          = data?.[0]?.result as string | undefined;
+  const confidence        = data?.[1]?.result as bigint | undefined;
+  const tvl               = data?.[2]?.result as bigint | undefined;
+  const status            = data?.[3]?.result as number | undefined;
+  const createdAt         = data?.[4]?.result as bigint | undefined;
+  const timeUntilSettle   = data?.[5]?.result as bigint | undefined;
 
   const confidencePercent = confidence !== undefined ? Number(confidence) / 100 : 50;
-  const tvlFormatted = tvl !== undefined ? (Number(tvl) / 1_000_000).toFixed(2) : "0.00";
+  const tvlFormatted      = tvl !== undefined ? (Number(tvl) / 1_000_000).toFixed(2) : "0.00";
+
+  // 格式化剩余天数
+  const daysLeft = timeUntilSettle !== undefined && timeUntilSettle > 0n
+    ? Math.ceil(Number(timeUntilSettle) / 86400)
+    : 0;
 
   const share = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -54,28 +66,36 @@ export default function MarketCard({ address }: MarketCardProps) {
     );
   }
 
+  // 状态标签
+  const StatusBadge = () => {
+    if (status === STATUS_SETTLED) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">
+          已结算
+        </span>
+      );
+    }
+    if (status === STATUS_CLOSING) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">
+          <Clock className="w-3 h-3" />
+          {daysLeft > 0 ? `${daysLeft}天后结算` : "即将结算"}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
+        <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+        进行中
+      </span>
+    );
+  };
+
   return (
     <Link href={`/market/${address}`} className="block group">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 hover:border-zinc-700 transition-all hover:bg-zinc-900/80 active:scale-[0.99]">
-        {/* Status + Share */}
         <div className="flex items-start justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            {status === 2 ? (
-              <span className="inline-flex items-center gap-1 text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">
-                已结算
-              </span>
-            ) : status === 1 ? (
-              <span className="inline-flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
-                等待期
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-                进行中
-              </span>
-            )}
-          </div>
+          <StatusBadge />
           <button
             onClick={share}
             className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-all"
@@ -85,12 +105,10 @@ export default function MarketCard({ address }: MarketCardProps) {
           </button>
         </div>
 
-        {/* Question */}
         <h3 className="text-sm font-medium text-zinc-100 leading-snug mb-4 line-clamp-2">
           {question || "加载中..."}
         </h3>
 
-        {/* Confidence Bar */}
         <div className="mb-3">
           <div className="flex justify-between items-center mb-1.5">
             <div className="flex items-center gap-1">
@@ -108,13 +126,12 @@ export default function MarketCard({ address }: MarketCardProps) {
           </div>
           <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full confidence-bar transition-all duration-700"
+              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700"
               style={{ width: `${confidencePercent}%` }}
             />
           </div>
         </div>
 
-        {/* Stats */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1 text-xs text-zinc-500">
             <Users className="w-3 h-3" />
