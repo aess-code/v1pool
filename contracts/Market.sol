@@ -5,89 +5,81 @@ import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract Market is ERC1155, ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
-    // ── Token IDs ────────────────────────────────────────────────────────────
     uint256 public constant YES = 0;
     uint256 public constant NO  = 1;
 
-    // ── Immutables ───────────────────────────────────────────────────────────
-    address public immutable usdt;
-    address public immutable creator;
-    uint256 public immutable createdAt;
-
-    // ── Storage ──────────────────────────────────────────────────────────────
-    address public treasury;
     string  public question;
     string  public description;
-    bool    public isClosed;
+    address public immutable creator;
+    address public immutable usdt;
+    address public immutable treasury;   // treasury A: 0.3%
+    address public immutable treasuryB;  // treasury B: 0.2%
 
     uint256 public yesSupply;
     uint256 public noSupply;
+    bool    public isClosed;
 
-    /// @notice Cumulative gross USDT traded (buy + sell, before fees)
     uint256 public totalVolume;
-
-    /// @notice Number of unique addresses that have ever bought into this market
     uint256 public participantCount;
+    mapping(address => bool) public hasParticipated;
+    mapping(address => bool) public claimed;
 
-    /// @dev Tracks whether an address has participated (to avoid double-counting)
-    mapping(address => bool) private hasParticipated;
+    uint256 public createdAt;
 
-    // ── Fee constants ────────────────────────────────────────────────────────
-    uint256 private constant CREATOR_FEE_BPS  = 50;
-    uint256 private constant TREASURY_FEE_BPS = 50;
-    uint256 private constant BPS_DENOM        = 10_000;
-    uint256 private constant SHARE_PER_USDT   = 1;
-
-    // ── Status ───────────────────────────────────────────────────────────────
     uint8 public constant STATUS_OPEN    = 0;
     uint8 public constant STATUS_CLOSING = 1;
     uint8 public constant STATUS_SETTLED = 2;
+    uint8 public status;
 
-    uint8   public status;
     uint256 public closingTimestamp;
-    bool    public settledYesWins;
-    bool    public isTie;
-    mapping(address => bool) public claimed;
-
     uint256 private constant SETTLEMENT_DELAY = 21 days;
 
-    // ── Events ───────────────────────────────────────────────────────────────
-    event Bought(address indexed user, uint256 indexed side, uint256 usdtGross, uint256 sharesMinted);
-    event Sold(address indexed user, uint256 indexed side, uint256 sharesBurned, uint256 usdtGross);
-    event MarketClosing(address indexed closer, uint256 settlementTime);
+    bool public settledYesWins;
+    bool public isTie;
+
+    // fees: creator 0.5%, treasury A 0.3%, treasury B 0.2% = 1% total
+    uint256 private constant CREATOR_FEE_BPS    = 50;
+    uint256 private constant TREASURY_A_FEE_BPS = 30;
+    uint256 private constant TREASURY_B_FEE_BPS = 20;
+    uint256 private constant BPS_DENOM          = 10_000;
+    uint256 private constant SHARE_PER_USDT     = 1_000_000;
+
+    event Bought(address indexed user, uint256 side, uint256 usdtAmount, uint256 shares);
+    event Sold(address indexed user, uint256 side, uint256 shares, uint256 usdtReturned);
+    event MarketClosing(address indexed initiator, uint256 settlementTime);
     event MarketSettled(bool yesWins, bool tie);
     event Claimed(address indexed user, uint256 amount);
 
-    // ── Constructor ──────────────────────────────────────────────────────────
     constructor(
         string memory _question,
         string memory _description,
         address _creator,
         address _usdt,
-        address _treasury
+        address _treasury,
+        address _treasuryB
     ) ERC1155("") Ownable(_creator) {
         question    = _question;
         description = _description;
         creator     = _creator;
         usdt        = _usdt;
         treasury    = _treasury;
-        createdAt   = block.timestamp;
+        treasuryB   = _treasuryB;
         status      = STATUS_OPEN;
+        createdAt   = block.timestamp;
     }
 
-    // ── Views ────────────────────────────────────────────────────────────────
-
-    function getConfidence() public view returns (uint256) {
+    function getConfidence() external view returns (uint256) {
         uint256 total = yesSupply + noSupply;
         if (total == 0) return 5000;
         return (yesSupply * BPS_DENOM) / total;
     }
 
-    function getTVL() public view returns (uint256) {
+    function getTVL() external view returns (uint256) {
         return (yesSupply + noSupply) / SHARE_PER_USDT;
     }
 
@@ -121,22 +113,23 @@ contract Market is ERC1155, ReentrancyGuard, Ownable {
         return (winBal * total) / (winSupply * SHARE_PER_USDT);
     }
 
-    // ── Mutators ─────────────────────────────────────────────────────────────
-
+    /// @notice Buy YES or NO. Allowed while Open or Closing.
     function buy(uint256 side, uint256 usdtAmount) external nonReentrant {
-        require(status == STATUS_OPEN, "Market not open");
+        require(status == STATUS_OPEN || status == STATUS_CLOSING, "Market not active");
         require(usdtAmount > 0, "Amount > 0");
         require(side == YES || side == NO, "Invalid side");
 
         IERC20(usdt).safeTransferFrom(msg.sender, address(this), usdtAmount);
 
-        uint256 treasuryFee = (usdtAmount * TREASURY_FEE_BPS) / BPS_DENOM;
-        uint256 creatorFee  = (usdtAmount * CREATOR_FEE_BPS)  / BPS_DENOM;
-        uint256 netUsdt     = usdtAmount - treasuryFee - creatorFee;
-        uint256 shares      = netUsdt * SHARE_PER_USDT;
+        uint256 creatorFee   = (usdtAmount * CREATOR_FEE_BPS)    / BPS_DENOM;
+        uint256 treasuryAFee = (usdtAmount * TREASURY_A_FEE_BPS) / BPS_DENOM;
+        uint256 treasuryBFee = (usdtAmount * TREASURY_B_FEE_BPS) / BPS_DENOM;
+        uint256 netUsdt      = usdtAmount - creatorFee - treasuryAFee - treasuryBFee;
+        uint256 shares       = netUsdt * SHARE_PER_USDT;
 
-        if (treasuryFee > 0) IERC20(usdt).safeTransfer(treasury, treasuryFee);
-        if (creatorFee  > 0) IERC20(usdt).safeTransfer(creator,  creatorFee);
+        if (creatorFee   > 0) IERC20(usdt).safeTransfer(creator,   creatorFee);
+        if (treasuryAFee > 0) IERC20(usdt).safeTransfer(treasury,  treasuryAFee);
+        if (treasuryBFee > 0) IERC20(usdt).safeTransfer(treasuryB, treasuryBFee);
 
         if (side == YES) { yesSupply += shares; } else { noSupply += shares; }
         _mint(msg.sender, side, shares, "");
@@ -150,29 +143,32 @@ contract Market is ERC1155, ReentrancyGuard, Ownable {
         emit Bought(msg.sender, side, usdtAmount, shares);
     }
 
+    /// @notice Sell shares. Allowed while Open or Closing.
     function sell(uint256 side, uint256 shares) external nonReentrant {
-        require(status == STATUS_OPEN, "Market not open");
+        require(status == STATUS_OPEN || status == STATUS_CLOSING, "Market not active");
         require(shares > 0, "Shares > 0");
         require(side == YES || side == NO, "Invalid side");
         require(balanceOf(msg.sender, side) >= shares, "Insufficient balance");
 
-        uint256 grossUsdt   = shares / SHARE_PER_USDT;
-        uint256 treasuryFee = (grossUsdt * TREASURY_FEE_BPS) / BPS_DENOM;
-        uint256 creatorFee  = (grossUsdt * CREATOR_FEE_BPS)  / BPS_DENOM;
-        uint256 netToUser   = grossUsdt - treasuryFee - creatorFee;
+        uint256 grossUsdt    = shares / SHARE_PER_USDT;
+        uint256 creatorFee   = (grossUsdt * CREATOR_FEE_BPS)    / BPS_DENOM;
+        uint256 treasuryAFee = (grossUsdt * TREASURY_A_FEE_BPS) / BPS_DENOM;
+        uint256 treasuryBFee = (grossUsdt * TREASURY_B_FEE_BPS) / BPS_DENOM;
+        uint256 netToUser    = grossUsdt - creatorFee - treasuryAFee - treasuryBFee;
 
         if (side == YES) { yesSupply -= shares; } else { noSupply -= shares; }
         _burn(msg.sender, side, shares);
 
         IERC20(usdt).safeTransfer(msg.sender, netToUser);
-        if (treasuryFee > 0) IERC20(usdt).safeTransfer(treasury, treasuryFee);
-        if (creatorFee  > 0) IERC20(usdt).safeTransfer(creator,  creatorFee);
+        if (creatorFee   > 0) IERC20(usdt).safeTransfer(creator,   creatorFee);
+        if (treasuryAFee > 0) IERC20(usdt).safeTransfer(treasury,  treasuryAFee);
+        if (treasuryBFee > 0) IERC20(usdt).safeTransfer(treasuryB, treasuryBFee);
 
         totalVolume += grossUsdt;
-
         emit Sold(msg.sender, side, shares, grossUsdt);
     }
 
+    /// @notice Creator closes the market. Irreversible. 21-day countdown begins.
     function initiateClose() external onlyOwner {
         require(status == STATUS_OPEN, "Not open");
         status           = STATUS_CLOSING;
@@ -181,13 +177,32 @@ contract Market is ERC1155, ReentrancyGuard, Ownable {
         emit MarketClosing(msg.sender, block.timestamp + SETTLEMENT_DELAY);
     }
 
-    function settle(bool _yesWins, bool _tie) external onlyOwner {
+    /// @notice Anyone can trigger settlement after 21 days.
+    ///         Result is auto-calculated from confidence index.
+    function settle() external {
         require(status == STATUS_CLOSING, "Not in closing");
         require(block.timestamp >= closingTimestamp + SETTLEMENT_DELAY, "Delay not passed");
-        status         = STATUS_SETTLED;
-        settledYesWins = _yesWins;
-        isTie          = _tie;
-        emit MarketSettled(_yesWins, _tie);
+
+        uint256 total = yesSupply + noSupply;
+        if (total == 0) {
+            isTie          = true;
+            settledYesWins = false;
+        } else {
+            uint256 confidence = (yesSupply * BPS_DENOM) / total;
+            if (confidence > 5000) {
+                settledYesWins = true;
+                isTie          = false;
+            } else if (confidence < 5000) {
+                settledYesWins = false;
+                isTie          = false;
+            } else {
+                isTie          = true;
+                settledYesWins = false;
+            }
+        }
+
+        status = STATUS_SETTLED;
+        emit MarketSettled(settledYesWins, isTie);
     }
 
     function claim() external nonReentrant {

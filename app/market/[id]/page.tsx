@@ -446,7 +446,7 @@ export default function MarketDetailPage() {
 
   const handleTrade = async () => {
     if (!amountBigInt || amountBigInt === BigInt(0)) { toast.error("Please enter an amount"); return; }
-    const sideValue = side === "yes" ? YES : NO;
+    const sideValue = BigInt(side === "yes" ? YES : NO);
     try {
       if (tab === "buy") {
         await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "buy", args: [sideValue, amountBigInt] });

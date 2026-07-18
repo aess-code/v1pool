@@ -1,21 +1,63 @@
-import { Address } from "viem";
+// Auto-generated from Hardhat artifacts
+// MarketFactory v3 deployed on Sepolia: 0x314f31B853B0508Ffa87619E29a0061b10E710B1
+// Changes: dual treasury (A 0.3% / B 0.2%), buy/sell allowed in Closing state,
+//          settle() is parameterless and auto-calculates result from confidence index
 
-// ── 合约地址 ─────────────────────────────────────────────────────────────────
-export const FACTORY_ADDRESS = (
-  (process.env.NEXT_PUBLIC_FACTORY_ADDRESS ?? "").trim() ||
-  "0x68c22314DA54a72E31ED4168acd5BB80696364b3"  // MarketFactory v2 on Sepolia
-) as Address;
+export const FACTORY_ADDRESS =
+  (process.env.NEXT_PUBLIC_FACTORY_ADDRESS as `0x${string}`) ??
+  "0x314f31B853B0508Ffa87619E29a0061b10E710B1";
 
-export const USDT_ADDRESS = (
-  (process.env.NEXT_PUBLIC_USDT_ADDRESS ?? "").trim() ||
-  "0x8308ae75F58526667fAEA3F8A828CB215B751c51"
-) as Address;
+export const USDT_ADDRESS =
+  (process.env.NEXT_PUBLIC_USDT_ADDRESS as `0x${string}`) ??
+  "0x8308ae75F58526667fAEA3F8A828CB215B751c51";
 
-// ── 市场方向常量 ──────────────────────────────────────────────────────────────
-export const YES = true;
-export const NO  = false;
+export const SUPPORTED_CHAINS = [
+  { id: 11155111, name: "Sepolia" },
+  { id: 1, name: "Ethereum" },
+];
 
-// ── MarketFactory ABI ────────────────────────────────────────────────────────
+// YES/NO token IDs (match contract constants)
+export const YES = 0;
+export const NO  = 1;
+
+// Minimal ERC-20 ABI for USDT approval and balance
+export const USDT_ABI = [
+  {
+    "inputs": [{"internalType": "address", "name": "account", "type": "address"}],
+    "name": "balanceOf",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "spender", "type": "address"},
+      {"internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "approve",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "owner", "type": "address"},
+      {"internalType": "address", "name": "spender", "type": "address"}
+    ],
+    "name": "allowance",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [{"internalType": "uint8", "name": "", "type": "uint8"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
+
 export const FACTORY_ABI = [
   {
     "inputs": [
@@ -26,17 +68,12 @@ export const FACTORY_ABI = [
       },
       {
         "internalType": "address",
-        "name": "_treasuryA",
+        "name": "_treasury",
         "type": "address"
       },
       {
         "internalType": "address",
         "name": "_treasuryB",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_treasuryC",
         "type": "address"
       }
     ],
@@ -113,6 +150,44 @@ export const FACTORY_ABI = [
       }
     ],
     "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldTreasuryB",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newTreasuryB",
+        "type": "address"
+      }
+    ],
+    "name": "TreasuryBUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldTreasury",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newTreasury",
+        "type": "address"
+      }
+    ],
+    "name": "TreasuryUpdated",
     "type": "event"
   },
   {
@@ -219,21 +294,24 @@ export const FACTORY_ABI = [
     "inputs": [
       {
         "internalType": "address",
-        "name": "_treasuryA",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_treasuryB",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_treasuryC",
+        "name": "_newTreasury",
         "type": "address"
       }
     ],
-    "name": "setTreasuries",
+    "name": "setTreasury",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_newTreasuryB",
+        "type": "address"
+      }
+    ],
+    "name": "setTreasuryB",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -253,7 +331,7 @@ export const FACTORY_ABI = [
   },
   {
     "inputs": [],
-    "name": "treasuryA",
+    "name": "treasury",
     "outputs": [
       {
         "internalType": "address",
@@ -279,19 +357,6 @@ export const FACTORY_ABI = [
   },
   {
     "inputs": [],
-    "name": "treasuryC",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "usdtAddress",
     "outputs": [
       {
@@ -305,36 +370,9 @@ export const FACTORY_ABI = [
   }
 ] as const;
 
-// ── Market 合约 ABI（v2 - 完整生命周期）────────────────────────────────────────
-// 状态枚举：0=OPEN, 1=CLOSING, 2=SETTLED
 export const MARKET_ABI = [
   {
     "inputs": [
-      {
-        "internalType": "address",
-        "name": "_usdt",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_creator",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_treasuryA",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_treasuryB",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "_treasuryC",
-        "type": "address"
-      },
       {
         "internalType": "string",
         "name": "_question",
@@ -344,10 +382,154 @@ export const MARKET_ABI = [
         "internalType": "string",
         "name": "_description",
         "type": "string"
+      },
+      {
+        "internalType": "address",
+        "name": "_creator",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_usdt",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_treasury",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_treasuryB",
+        "type": "address"
       }
     ],
     "stateMutability": "nonpayable",
     "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "balance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "needed",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "ERC1155InsufficientBalance",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "approver",
+        "type": "address"
+      }
+    ],
+    "name": "ERC1155InvalidApprover",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "idsLength",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "valuesLength",
+        "type": "uint256"
+      }
+    ],
+    "name": "ERC1155InvalidArrayLength",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      }
+    ],
+    "name": "ERC1155InvalidOperator",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "receiver",
+        "type": "address"
+      }
+    ],
+    "name": "ERC1155InvalidReceiver",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "sender",
+        "type": "address"
+      }
+    ],
+    "name": "ERC1155InvalidSender",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "ERC1155MissingApprovalForAll",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableInvalidOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error"
   },
   {
     "inputs": [],
@@ -371,19 +553,44 @@ export const MARKET_ABI = [
       {
         "indexed": true,
         "internalType": "address",
-        "name": "user",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "operator",
         "type": "address"
       },
       {
         "indexed": false,
         "internalType": "bool",
-        "name": "isYes",
+        "name": "approved",
         "type": "bool"
+      }
+    ],
+    "name": "ApprovalForAll",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "grossAmount",
+        "name": "side",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "usdtAmount",
         "type": "uint256"
       },
       {
@@ -421,17 +628,17 @@ export const MARKET_ABI = [
       {
         "indexed": true,
         "internalType": "address",
-        "name": "creator",
+        "name": "initiator",
         "type": "address"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "settleAt",
+        "name": "settlementTime",
         "type": "uint256"
       }
     ],
-    "name": "CloseRequested",
+    "name": "MarketClosing",
     "type": "event"
   },
   {
@@ -446,23 +653,30 @@ export const MARKET_ABI = [
       {
         "indexed": false,
         "internalType": "bool",
-        "name": "isTie",
+        "name": "tie",
         "type": "bool"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "yesPool",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "noPool",
-        "type": "uint256"
       }
     ],
-    "name": "Settled",
+    "name": "MarketSettled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
     "type": "event"
   },
   {
@@ -476,9 +690,9 @@ export const MARKET_ABI = [
       },
       {
         "indexed": false,
-        "internalType": "bool",
-        "name": "isYes",
-        "type": "bool"
+        "internalType": "uint256",
+        "name": "side",
+        "type": "uint256"
       },
       {
         "indexed": false,
@@ -489,7 +703,7 @@ export const MARKET_ABI = [
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "netPayout",
+        "name": "usdtReturned",
         "type": "uint256"
       }
     ],
@@ -497,8 +711,101 @@ export const MARKET_ABI = [
     "type": "event"
   },
   {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[]",
+        "name": "ids",
+        "type": "uint256[]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[]",
+        "name": "values",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "TransferBatch",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      }
+    ],
+    "name": "TransferSingle",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "value",
+        "type": "string"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "URI",
+    "type": "event"
+  },
+  {
     "inputs": [],
-    "name": "CLOSE_DELAY",
+    "name": "NO",
     "outputs": [
       {
         "internalType": "uint256",
@@ -511,12 +818,12 @@ export const MARKET_ABI = [
   },
   {
     "inputs": [],
-    "name": "FEE_CREATOR",
+    "name": "STATUS_CLOSING",
     "outputs": [
       {
-        "internalType": "uint256",
+        "internalType": "uint8",
         "name": "",
-        "type": "uint256"
+        "type": "uint8"
       }
     ],
     "stateMutability": "view",
@@ -524,12 +831,12 @@ export const MARKET_ABI = [
   },
   {
     "inputs": [],
-    "name": "FEE_DENOM",
+    "name": "STATUS_OPEN",
     "outputs": [
       {
-        "internalType": "uint256",
+        "internalType": "uint8",
         "name": "",
-        "type": "uint256"
+        "type": "uint8"
       }
     ],
     "stateMutability": "view",
@@ -537,12 +844,12 @@ export const MARKET_ABI = [
   },
   {
     "inputs": [],
-    "name": "FEE_TREASURY_A",
+    "name": "STATUS_SETTLED",
     "outputs": [
       {
-        "internalType": "uint256",
+        "internalType": "uint8",
         "name": "",
-        "type": "uint256"
+        "type": "uint8"
       }
     ],
     "stateMutability": "view",
@@ -550,20 +857,7 @@ export const MARKET_ABI = [
   },
   {
     "inputs": [],
-    "name": "FEE_TREASURY_B",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "FEE_TREASURY_C",
+    "name": "YES",
     "outputs": [
       {
         "internalType": "uint256",
@@ -577,13 +871,61 @@ export const MARKET_ABI = [
   {
     "inputs": [
       {
-        "internalType": "bool",
-        "name": "_isYes",
-        "type": "bool"
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
       },
       {
         "internalType": "uint256",
-        "name": "_amount",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "balanceOf",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address[]",
+        "name": "accounts",
+        "type": "address[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "ids",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "balanceOfBatch",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "side",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "usdtAmount",
         "type": "uint256"
       }
     ],
@@ -620,7 +962,7 @@ export const MARKET_ABI = [
   },
   {
     "inputs": [],
-    "name": "closeRequestedAt",
+    "name": "closingTimestamp",
     "outputs": [
       {
         "internalType": "uint256",
@@ -674,7 +1016,7 @@ export const MARKET_ABI = [
     "inputs": [
       {
         "internalType": "address",
-        "name": "_user",
+        "name": "user",
         "type": "address"
       }
     ],
@@ -719,7 +1061,7 @@ export const MARKET_ABI = [
     "inputs": [
       {
         "internalType": "address",
-        "name": "_user",
+        "name": "user",
         "type": "address"
       }
     ],
@@ -727,23 +1069,42 @@ export const MARKET_ABI = [
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "userYesShares",
+        "name": "yesBal",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "userNoShares",
+        "name": "noBal",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "yesValue",
+        "name": "yesValueUSDT",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "noValue",
+        "name": "noValueUSDT",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "hasParticipated",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -754,6 +1115,30 @@ export const MARKET_ABI = [
     "name": "initiateClose",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      }
+    ],
+    "name": "isApprovedForAll",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -784,12 +1169,25 @@ export const MARKET_ABI = [
   },
   {
     "inputs": [],
-    "name": "noPool",
+    "name": "noSupply",
     "outputs": [
       {
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -822,19 +1220,110 @@ export const MARKET_ABI = [
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
-        "internalType": "bool",
-        "name": "_isYes",
-        "type": "bool"
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "ids",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "values",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "bytes",
+        "name": "data",
+        "type": "bytes"
+      }
+    ],
+    "name": "safeBatchTransferFrom",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "from",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
       },
       {
         "internalType": "uint256",
-        "name": "_shares",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "value",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes",
+        "name": "data",
+        "type": "bytes"
+      }
+    ],
+    "name": "safeTransferFrom",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "side",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "shares",
         "type": "uint256"
       }
     ],
     "name": "sell",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "operator",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "approved",
+        "type": "bool"
+      }
+    ],
+    "name": "setApprovalForAll",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -864,7 +1353,7 @@ export const MARKET_ABI = [
     "name": "status",
     "outputs": [
       {
-        "internalType": "enum Market.Status",
+        "internalType": "uint8",
         "name": "",
         "type": "uint8"
       }
@@ -873,13 +1362,19 @@ export const MARKET_ABI = [
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "timeUntilSettlement",
+    "inputs": [
+      {
+        "internalType": "bytes4",
+        "name": "interfaceId",
+        "type": "bytes4"
+      }
+    ],
+    "name": "supportsInterface",
     "outputs": [
       {
-        "internalType": "uint256",
+        "internalType": "bool",
         "name": "",
-        "type": "uint256"
+        "type": "bool"
       }
     ],
     "stateMutability": "view",
@@ -887,7 +1382,7 @@ export const MARKET_ABI = [
   },
   {
     "inputs": [],
-    "name": "totalNoShares",
+    "name": "timeUntilSettlement",
     "outputs": [
       {
         "internalType": "uint256",
@@ -912,21 +1407,21 @@ export const MARKET_ABI = [
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "totalYesShares",
-    "outputs": [
+    "inputs": [
       {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
       }
     ],
-    "stateMutability": "view",
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [],
-    "name": "treasuryA",
+    "name": "treasury",
     "outputs": [
       {
         "internalType": "address",
@@ -951,13 +1446,19 @@ export const MARKET_ABI = [
     "type": "function"
   },
   {
-    "inputs": [],
-    "name": "treasuryC",
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "uri",
     "outputs": [
       {
-        "internalType": "address",
+        "internalType": "string",
         "name": "",
-        "type": "address"
+        "type": "string"
       }
     ],
     "stateMutability": "view",
@@ -968,7 +1469,7 @@ export const MARKET_ABI = [
     "name": "usdt",
     "outputs": [
       {
-        "internalType": "contract IERC20",
+        "internalType": "address",
         "name": "",
         "type": "address"
       }
@@ -978,7 +1479,7 @@ export const MARKET_ABI = [
   },
   {
     "inputs": [],
-    "name": "yesPool",
+    "name": "yesSupply",
     "outputs": [
       {
         "internalType": "uint256",
@@ -987,341 +1488,6 @@ export const MARKET_ABI = [
       }
     ],
     "stateMutability": "view",
-    "type": "function"
-  }
-] as const;
-
-// ── USDT ABI ─────────────────────────────────────────────────────────────────
-export const USDT_ABI = [
-  {
-    "inputs": [],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "spender",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "allowance",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "needed",
-        "type": "uint256"
-      }
-    ],
-    "name": "ERC20InsufficientAllowance",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "sender",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "balance",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "needed",
-        "type": "uint256"
-      }
-    ],
-    "name": "ERC20InsufficientBalance",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "approver",
-        "type": "address"
-      }
-    ],
-    "name": "ERC20InvalidApprover",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "receiver",
-        "type": "address"
-      }
-    ],
-    "name": "ERC20InvalidReceiver",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "sender",
-        "type": "address"
-      }
-    ],
-    "name": "ERC20InvalidSender",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "spender",
-        "type": "address"
-      }
-    ],
-    "name": "ERC20InvalidSpender",
-    "type": "error"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "owner",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "spender",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "value",
-        "type": "uint256"
-      }
-    ],
-    "name": "Approval",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "from",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "to",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "value",
-        "type": "uint256"
-      }
-    ],
-    "name": "Transfer",
-    "type": "event"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "owner",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "spender",
-        "type": "address"
-      }
-    ],
-    "name": "allowance",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "spender",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "value",
-        "type": "uint256"
-      }
-    ],
-    "name": "approve",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "account",
-        "type": "address"
-      }
-    ],
-    "name": "balanceOf",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "decimals",
-    "outputs": [
-      {
-        "internalType": "uint8",
-        "name": "",
-        "type": "uint8"
-      }
-    ],
-    "stateMutability": "pure",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "to",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "mint",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "name",
-    "outputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "symbol",
-    "outputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "totalSupply",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "to",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "value",
-        "type": "uint256"
-      }
-    ],
-    "name": "transfer",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "from",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "to",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "value",
-        "type": "uint256"
-      }
-    ],
-    "name": "transferFrom",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable",
     "type": "function"
   }
 ] as const;
