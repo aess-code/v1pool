@@ -41,20 +41,19 @@ export default function HomePage() {
 
   const addresses = (marketAddresses as Address[] | undefined) ?? [];
 
-  // 批量读取所有市场的 status，仅在"即将结算" Tab 激活时启用
-  const { data: statusResults, isLoading: isStatusLoading } = useReadContracts({
-    contracts: addresses.map((addr) => ({
-      address: addr,
-      abi: MARKET_ABI,
-      functionName: "status" as const,
-    })),
+  // 批量读取所有市场的 status 和 timeUntilSettlement，仅在"即将结算" Tab 激活时启用
+  const { data: closingData, isLoading: isClosingDataLoading } = useReadContracts({
+    contracts: addresses.flatMap((addr) => [
+      { address: addr, abi: MARKET_ABI, functionName: "status" as const },
+      { address: addr, abi: MARKET_ABI, functionName: "timeUntilSettlement" as const },
+    ]),
     query: {
       enabled: activeTab === "closing" && addresses.length > 0,
       refetchInterval: 15_000,
     },
   });
 
-  const isLoading = isCountLoading || isMarketsLoading || (activeTab === "closing" && isStatusLoading);
+  const isLoading = isCountLoading || isMarketsLoading || (activeTab === "closing" && isClosingDataLoading);
 
   // 根据 Tab 计算展示地址列表
   let displayAddresses: Address[];
@@ -64,11 +63,22 @@ export default function HomePage() {
     // 热门排序：沿用原始顺序（后续可按 TVL 权重排序）
     displayAddresses = [...addresses];
   } else {
-    // 即将结算：过滤 status === CLOSING，保持原始顺序（timeUntilSettlement 由 MarketCard 展示）
-    displayAddresses = addresses.filter((_, i) => {
-      const result = statusResults?.[i]?.result;
-      return Number(result) === STATUS_CLOSING;
-    });
+    // 即将结算：过滤 status === CLOSING，并按 timeUntilSettlement 升序排序
+    const closingMarkets = addresses
+      .map((addr, i) => {
+        const status = closingData?.[i * 2]?.result;
+        const timeUntilSettle = closingData?.[i * 2 + 1]?.result;
+        return {
+          addr,
+          status: Number(status),
+          timeUntilSettle: timeUntilSettle !== undefined ? Number(timeUntilSettle) : Infinity,
+        };
+      })
+      .filter((m) => m.status === STATUS_CLOSING);
+
+    // 按剩余时间升序排序（时间越少越靠前）
+    closingMarkets.sort((a, b) => a.timeUntilSettle - b.timeUntilSettle);
+    displayAddresses = closingMarkets.map((m) => m.addr);
   }
 
   const filteredAddresses = searchQuery
