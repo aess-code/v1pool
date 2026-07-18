@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { FACTORY_ADDRESS, FACTORY_ABI, MARKET_ABI } from "@/constants";
 import { type Address } from "viem";
 import Header from "@/components/Header";
-import MarketCard from "@/components/MarketCard";
+import MarketCard, { MarketData } from "@/components/MarketCard";
 import CreateModal from "@/components/CreateMarketModal";
 import { Search, Plus, Loader2, Flame, Clock, Timer } from "lucide-react";
 
@@ -41,100 +41,76 @@ export default function HomePage() {
 
   const addresses = (marketAddresses as Address[] | undefined) ?? [];
 
-  // 批量读取所有市场的 question（用于搜索）
-  const { data: questionsData, isLoading: isQuestionsLoading } = useReadContracts({
-    contracts: addresses.map((addr) => ({
-      address: addr,
-      abi: MARKET_ABI,
-      functionName: "question" as const,
-    })),
-    query: {
-      enabled: addresses.length > 0,
-      refetchInterval: 60_000, // 文本不常变，刷新频率降低
-    },
-  });
-
-  // 批量读取所有市场的 status 和 timeUntilSettlement，仅在"即将结算" Tab 激活时启用
-  const { data: closingData, isLoading: isClosingDataLoading } = useReadContracts({
+  // 一次性批量读取所有市场的所有必要数据，避免 N+1 查询
+  const { data: marketsRawData, isLoading: isDataLoading } = useReadContracts({
     contracts: addresses.flatMap((addr) => [
-      { address: addr, abi: MARKET_ABI, functionName: "status" as const },
-      { address: addr, abi: MARKET_ABI, functionName: "timeUntilSettlement" as const },
-    ]),
-    query: {
-      enabled: activeTab === "closing" && addresses.length > 0,
-      refetchInterval: 15_000,
-    },
-  });
-
-  // 批量读取所有市场的权重数据（totalVolume, getTVL, participantCount），仅在"最热市场" Tab 激活时启用
-  const { data: weightData, isLoading: isWeightDataLoading } = useReadContracts({
-    contracts: addresses.flatMap((addr) => [
-      { address: addr, abi: MARKET_ABI, functionName: "totalVolume" as const },
+      { address: addr, abi: MARKET_ABI, functionName: "question" as const },
+      { address: addr, abi: MARKET_ABI, functionName: "getConfidence" as const },
       { address: addr, abi: MARKET_ABI, functionName: "getTVL" as const },
+      { address: addr, abi: MARKET_ABI, functionName: "status" as const },
+      { address: addr, abi: MARKET_ABI, functionName: "createdAt" as const },
+      { address: addr, abi: MARKET_ABI, functionName: "timeUntilSettlement" as const },
+      { address: addr, abi: MARKET_ABI, functionName: "totalVolume" as const },
       { address: addr, abi: MARKET_ABI, functionName: "participantCount" as const },
     ]),
     query: {
-      enabled: activeTab === "hot" && addresses.length > 0,
+      enabled: addresses.length > 0,
       refetchInterval: 15_000,
     },
   });
 
-  const isLoading = 
-    isCountLoading || 
-    isMarketsLoading || 
-    isQuestionsLoading || 
-    (activeTab === "closing" && isClosingDataLoading) ||
-    (activeTab === "hot" && isWeightDataLoading);
+  const isLoading = isCountLoading || isMarketsLoading || (addresses.length > 0 && isDataLoading);
 
-  // 根据 Tab 计算展示地址列表
-  let displayAddresses: Address[];
-  if (activeTab === "newest") {
-    displayAddresses = [...addresses].reverse();
-  } else if (activeTab === "hot") {
-    // 热门排序：根据权重公式 (成交量 50% + TVL 30% + 参与人数 20%) 降序排序
-    const hotMarkets = addresses.map((addr, i) => {
-      const vol = Number(weightData?.[i * 3]?.result || 0n);
-      const tvl = Number(weightData?.[i * 3 + 1]?.result || 0n);
-      const participants = Number(weightData?.[i * 3 + 2]?.result || 0n);
-      
-      // 为了让参与人数与资金量在同一个量级上起作用，假设每个参与者平均贡献 100 USDT 的权重（100 * 10^6）
-      const participantWeight = participants * 100_000_000;
-      
-      // 权重公式：成交量 50% + TVL 30% + 参与人数 20%
-      const score = (vol * 0.5) + (tvl * 0.3) + (participantWeight * 0.2);
-      
-      return { addr, score };
-    });
+  // 组装结构化数据
+  const allMarkets = addresses.map((addr, i) => {
+    const baseIdx = i * 8;
+    const question = (marketsRawData?.[baseIdx]?.result as string) || "";
+    const confidence = (marketsRawData?.[baseIdx + 1]?.result as bigint) || 5000n;
+    const tvl = (marketsRawData?.[baseIdx + 2]?.result as bigint) || 0n;
+    const status = (marketsRawData?.[baseIdx + 3]?.result as number) ?? 0;
+    const createdAt = (marketsRawData?.[baseIdx + 4]?.result as bigint) || 0n;
+    const timeUntilSettle = (marketsRawData?.[baseIdx + 5]?.result as bigint) || 0n;
+    const totalVolume = (marketsRawData?.[baseIdx + 6]?.result as bigint) || 0n;
+    const participantCount = (marketsRawData?.[baseIdx + 7]?.result as bigint) || 0n;
 
-    hotMarkets.sort((a, b) => b.score - a.score);
-    displayAddresses = hotMarkets.map((m) => m.addr);
-  } else {
-    // 即将结算：过滤 status === CLOSING，并按 timeUntilSettlement 升序排序
-    const closingMarkets = addresses
-      .map((addr, i) => {
-        const status = closingData?.[i * 2]?.result;
-        const timeUntilSettle = closingData?.[i * 2 + 1]?.result;
-        return {
-          addr,
-          status: Number(status),
-          timeUntilSettle: timeUntilSettle !== undefined ? Number(timeUntilSettle) : Infinity,
-        };
-      })
-      .filter((m) => m.status === STATUS_CLOSING);
-
-    // 按剩余时间升序排序（时间越少越靠前）
-    closingMarkets.sort((a, b) => a.timeUntilSettle - b.timeUntilSettle);
-    displayAddresses = closingMarkets.map((m) => m.addr);
-  }
+    return {
+      address: addr,
+      question,
+      confidencePercent: Number(confidence) / 100,
+      tvlFormatted: (Number(tvl) / 1_000_000).toFixed(2),
+      status,
+      createdAt: Number(createdAt),
+      daysLeft: timeUntilSettle > 0n ? Math.ceil(Number(timeUntilSettle) / 86400) : 0,
+      
+      // 用于排序的原始数据
+      _timeUntilSettle: Number(timeUntilSettle),
+      _totalVolume: Number(totalVolume),
+      _tvl: Number(tvl),
+      _participantCount: Number(participantCount),
+    };
+  });
 
   // 按问题文本进行搜索过滤
-  const filteredAddresses = searchQuery
-    ? displayAddresses.filter((addr) => {
-        const index = addresses.indexOf(addr);
-        const questionText = questionsData?.[index]?.result as string | undefined;
-        return questionText && questionText.toLowerCase().includes(searchQuery.toLowerCase());
-      })
-    : displayAddresses;
+  const searchFilteredMarkets = searchQuery
+    ? allMarkets.filter((m) => m.question.toLowerCase().includes(searchQuery.toLowerCase()))
+    : allMarkets;
+
+  // 根据 Tab 计算最终展示的市场列表
+  let displayMarkets = [...searchFilteredMarkets];
+  
+  if (activeTab === "newest") {
+    displayMarkets.reverse();
+  } else if (activeTab === "hot") {
+    displayMarkets.forEach(m => {
+      const participantWeight = m._participantCount * 100_000_000;
+      (m as any)._score = (m._totalVolume * 0.5) + (m._tvl * 0.3) + (participantWeight * 0.2);
+    });
+    displayMarkets.sort((a: any, b: any) => b._score - a._score);
+  } else if (activeTab === "closing") {
+    displayMarkets = displayMarkets
+      .filter((m) => m.status === STATUS_CLOSING)
+      .sort((a, b) => a._timeUntilSettle - b._timeUntilSettle);
+  }
 
   // 创建成功回调：只做静默刷新，跳转逻辑由 CreateModal 内部处理
   const handleCreateSuccess = useCallback(() => {
@@ -225,7 +201,7 @@ export default function HomePage() {
               <Loader2 className="w-8 h-8 animate-spin mb-4" />
               <p>加载市场数据中...</p>
             </div>
-          ) : filteredAddresses.length === 0 ? (
+          ) : displayMarkets.length === 0 ? (
             <div className="text-center py-20 text-zinc-500 bg-zinc-900/30 rounded-3xl border border-zinc-800/50 border-dashed">
               {activeTab === "closing" ? (
                 <p className="text-lg">暂无即将结算的市场</p>
@@ -243,9 +219,8 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {filteredAddresses.map((address) => (
-                // key 只用合约地址，永远不变，DOM 不重建，不触发 wagmi hooks 雪崩
-                <MarketCard key={address} address={address} />
+              {displayMarkets.map((market) => (
+                <MarketCard key={market.address} market={market} />
               ))}
             </div>
           )}

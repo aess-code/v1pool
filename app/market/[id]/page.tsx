@@ -306,7 +306,7 @@ export default function MarketDetailPage() {
 
   const confidencePercent = confidence !== undefined ? Number(confidence) / 100 : 50;
   const tvlFormatted      = tvl !== undefined ? (Number(tvl) / 1_000_000).toFixed(2) : "0.00";
-  const daysLeft          = timeUntilSettle !== undefined && timeUntilSettle > 0n
+  const daysLeft          = timeUntilSettle !== undefined && timeUntilSettle > BigInt(0)
     ? Math.ceil(Number(timeUntilSettle) / 86400) : 0;
 
   // ── 读取用户持仓 ──────────────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ export default function MarketDetailPage() {
     query: { enabled: !!userAddress, refetchInterval: 10_000 },
   });
 
-  const [yesBal, noBal, yesValue, noValue] = (userPosition as [bigint, bigint, bigint, bigint]) || [0n, 0n, 0n, 0n];
+  const [yesBal, noBal, yesValue, noValue] = (userPosition as [bigint, bigint, bigint, bigint]) || [BigInt(0), BigInt(0), BigInt(0), BigInt(0)];
 
   // ── 读取可领取奖励 ────────────────────────────────────────────────────────────
   const { data: claimAmount } = useReadContract({
@@ -348,7 +348,7 @@ export default function MarketDetailPage() {
       !hasClaimed &&
       !claimModalDismissed &&
       claimAmount !== undefined &&
-      (claimAmount as bigint) > 0n
+      (claimAmount as bigint) > BigInt(0)
     ) {
       const timer = setTimeout(() => setShowClaimModal(true), 800);
       return () => clearTimeout(timer);
@@ -375,8 +375,8 @@ export default function MarketDetailPage() {
   const usdtBalanceFormatted = usdtBalance
     ? parseFloat(formatUnits(usdtBalance as bigint, 6)).toFixed(2) : "0.00";
 
-  const amountBigInt  = amount ? parseUnits(amount, 6) : 0n;
-  const needsApproval = tab === "buy" && (allowance as bigint || 0n) < amountBigInt;
+  const amountBigInt  = amount ? parseUnits(amount, 6) : BigInt(0);
+  const needsApproval = tab === "buy" && (allowance as bigint || BigInt(0)) < amountBigInt;
 
   // ── 写合约 ────────────────────────────────────────────────────────────────────
   const { writeContractAsync, isPending, data: txHash, reset } = useWriteContract();
@@ -439,7 +439,7 @@ export default function MarketDetailPage() {
   };
 
   const handleTrade = async () => {
-    if (!amountBigInt || amountBigInt === 0n) { toast.error("请输入金额"); return; }
+    if (!amountBigInt || amountBigInt === BigInt(0)) { toast.error("请输入金额"); return; }
     const sideValue = side === "yes" ? YES : NO;
     try {
       if (tab === "buy") {
@@ -458,7 +458,7 @@ export default function MarketDetailPage() {
   const handleRequestClose = async () => {
     setShowCloseConfirm(false);
     try {
-      await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "requestClose" });
+      await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "initiateClose" });
       toast.info("申请关闭已提交，21 天倒计时开始...");
     } catch (err: unknown) {
       const e = err as { shortMessage?: string; message?: string };
@@ -695,17 +695,17 @@ export default function MarketDetailPage() {
         </div>
 
         {/* ── 我的持仓 ── */}
-        {isConnected && (yesBal > 0n || noBal > 0n) && (
+        {isConnected && (yesBal > BigInt(0) || noBal > BigInt(0)) && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4">
             <p className="text-xs font-medium text-zinc-500 mb-3">我的持仓</p>
             <div className="grid grid-cols-2 gap-3">
-              {yesBal > 0n && (
+              {yesBal > BigInt(0) && (
                 <div className="bg-emerald-400/5 border border-emerald-400/20 rounded-xl p-3">
                   <p className="text-xs text-emerald-500 mb-1">YES 持仓</p>
                   <p className="text-sm font-bold text-emerald-400">{(Number(yesValue) / 1_000_000).toFixed(2)} USDT</p>
                 </div>
               )}
-              {noBal > 0n && (
+              {noBal > BigInt(0) && (
                 <div className="bg-rose-400/5 border border-rose-400/20 rounded-xl p-3">
                   <p className="text-xs text-rose-500 mb-1">NO 持仓</p>
                   <p className="text-sm font-bold text-rose-400">{(Number(noValue) / 1_000_000).toFixed(2)} USDT</p>
@@ -850,7 +850,7 @@ export default function MarketDetailPage() {
                 <p className="text-sm text-zinc-500 mb-1">请先连接钱包</p>
                 <p className="text-xs text-zinc-600">点击右上角连接按钮</p>
               </div>
-            ) : tab === "buy" && needsApproval && amountBigInt > 0n ? (
+            ) : tab === "buy" && needsApproval && amountBigInt > BigInt(0) ? (
               <button
                 onClick={handleApprove}
                 disabled={isProcessing}

@@ -24,7 +24,7 @@ function parseNewMarketAddress(
       const decoded = decodeEventLog({
         abi: FACTORY_ABI,
         eventName: "MarketCreated",
-        topics: log.topics,
+        topics: log.topics as any,
         data: log.data,
       });
       // decoded.args.market 是新市场的合约地址（indexed 参数在 topics 中）

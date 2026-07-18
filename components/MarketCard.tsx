@@ -2,47 +2,38 @@
 
 import React from "react";
 import Link from "next/link";
-import { useReadContracts } from "wagmi";
-import { MARKET_ABI } from "../constants";
-import { Share2, TrendingUp, TrendingDown, Users, Clock } from "lucide-react";
+import { Share2, TrendingUp, TrendingDown, Clock, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Address } from "viem";
 
-interface MarketCardProps {
+export interface MarketData {
   address: Address;
+  question: string;
+  confidencePercent: number;
+  tvlFormatted: string;
+  status: number;
+  createdAt: number;
+  daysLeft: number;
 }
 
-// 市场状态枚举（与合约一致）
+interface MarketCardProps {
+  market: MarketData;
+}
+
 const STATUS_OPEN    = 0;
 const STATUS_CLOSING = 1;
 const STATUS_SETTLED = 2;
 
-export default function MarketCard({ address }: MarketCardProps) {
-  const { data, isLoading } = useReadContracts({
-    contracts: [
-      { address, abi: MARKET_ABI, functionName: "question" },
-      { address, abi: MARKET_ABI, functionName: "getConfidence" },
-      { address, abi: MARKET_ABI, functionName: "getTVL" },
-      { address, abi: MARKET_ABI, functionName: "status" },
-      { address, abi: MARKET_ABI, functionName: "createdAt" },
-      { address, abi: MARKET_ABI, functionName: "timeUntilSettlement" },
-    ],
-  });
-
-  const question          = data?.[0]?.result as string | undefined;
-  const confidence        = data?.[1]?.result as bigint | undefined;
-  const tvl               = data?.[2]?.result as bigint | undefined;
-  const status            = data?.[3]?.result as number | undefined;
-  const createdAt         = data?.[4]?.result as bigint | undefined;
-  const timeUntilSettle   = data?.[5]?.result as bigint | undefined;
-
-  const confidencePercent = confidence !== undefined ? Number(confidence) / 100 : 50;
-  const tvlFormatted      = tvl !== undefined ? (Number(tvl) / 1_000_000).toFixed(2) : "0.00";
-
-  // 格式化剩余天数
-  const daysLeft = timeUntilSettle !== undefined && timeUntilSettle > 0n
-    ? Math.ceil(Number(timeUntilSettle) / 86400)
-    : 0;
+export default function MarketCard({ market }: MarketCardProps) {
+  const {
+    address,
+    question,
+    confidencePercent,
+    tvlFormatted,
+    status,
+    createdAt,
+    daysLeft,
+  } = market;
 
   const share = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -56,90 +47,79 @@ export default function MarketCard({ address }: MarketCardProps) {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 animate-pulse">
-        <div className="h-4 bg-zinc-800 rounded w-3/4 mb-3" />
-        <div className="h-3 bg-zinc-800 rounded w-1/2 mb-4" />
-        <div className="h-2 bg-zinc-800 rounded w-full" />
-      </div>
-    );
-  }
-
-  // 状态标签
-  const StatusBadge = () => {
-    if (status === STATUS_SETTLED) {
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">
-          已结算
-        </span>
-      );
-    }
-    if (status === STATUS_CLOSING) {
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">
-          <Clock className="w-3 h-3" />
-          {daysLeft > 0 ? `${daysLeft}天后结算` : "即将结算"}
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
-        <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-        进行中
-      </span>
-    );
-  };
-
   return (
     <Link href={`/market/${address}`} className="block group">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 hover:border-zinc-700 transition-all hover:bg-zinc-900/80 active:scale-[0.99]">
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <StatusBadge />
+      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 hover:border-zinc-700 hover:bg-zinc-800/50 transition-all duration-300">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="flex-1">
+            <h3 className="text-lg font-bold text-zinc-100 group-hover:text-white transition-colors leading-snug mb-2 line-clamp-2">
+              {question || "加载中..."}
+            </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              {status === STATUS_SETTLED ? (
+                <span className="inline-flex items-center gap-1 text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">
+                  <Lock className="w-3 h-3" />已结算
+                </span>
+              ) : status === STATUS_CLOSING ? (
+                <span className="inline-flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">
+                  <Clock className="w-3 h-3" />
+                  {daysLeft > 0 ? `${daysLeft} 天后结算` : "即将结算"}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />进行中
+                </span>
+              )}
+              {createdAt > 0 && (
+                <span className="text-xs text-zinc-600">
+                  {new Date(createdAt * 1000).toLocaleDateString("zh-CN")}
+                </span>
+              )}
+            </div>
+          </div>
           <button
             onClick={share}
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-all"
-            aria-label="分享"
+            className="p-2 -m-2 rounded-xl text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700/50 transition-colors"
           >
-            <Share2 className="w-3.5 h-3.5" />
+            <Share2 className="w-4 h-4" />
           </button>
         </div>
 
-        <h3 className="text-sm font-medium text-zinc-100 leading-snug mb-4 line-clamp-2">
-          {question || "加载中..."}
-        </h3>
-
-        <div className="mb-3">
-          <div className="flex justify-between items-center mb-1.5">
-            <div className="flex items-center gap-1">
-              <TrendingUp className="w-3 h-3 text-emerald-400" />
-              <span className="text-xs text-emerald-400 font-medium">
-                YES {confidencePercent.toFixed(1)}%
+        <div className="flex items-center gap-4 mb-4">
+          <div className="flex-1">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                YES <TrendingUp className="w-3 h-3" />
+              </span>
+              <span className="text-xs font-bold text-rose-400 flex items-center gap-1">
+                <TrendingDown className="w-3 h-3" /> NO
               </span>
             </div>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-rose-400 font-medium">
-                NO {(100 - confidencePercent).toFixed(1)}%
-              </span>
-              <TrendingDown className="w-3 h-3 text-rose-400" />
+            <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                style={{ width: `${confidencePercent}%` }}
+              />
             </div>
           </div>
-          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700"
-              style={{ width: `${confidencePercent}%` }}
-            />
+          <div className="text-right shrink-0">
+            <p className="text-[10px] text-zinc-500 mb-0.5">信心指数</p>
+            <p className="text-sm font-bold text-zinc-300">
+              {confidencePercent.toFixed(1)}%
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 text-xs text-zinc-500">
-            <Users className="w-3 h-3" />
-            <span>TVL: {tvlFormatted} USDT</span>
+        <div className="flex items-center justify-between pt-4 border-t border-zinc-800/80">
+          <div>
+            <p className="text-[10px] text-zinc-500 mb-0.5">TVL</p>
+            <p className="text-sm font-bold text-zinc-300">${tvlFormatted}</p>
           </div>
-          <span className="text-xs text-zinc-600">
-            {createdAt ? new Date(Number(createdAt) * 1000).toLocaleDateString("zh-CN") : ""}
-          </span>
+          <div className="text-right">
+            <span className="inline-block px-3 py-1 rounded-lg bg-zinc-800 text-xs font-medium text-zinc-400 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+              去交易 →
+            </span>
+          </div>
         </div>
       </div>
     </Link>

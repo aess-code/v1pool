@@ -56,10 +56,10 @@ function PositionItem({
   const yesWins     = data?.[5]?.result as boolean | undefined;
   const isTie       = data?.[6]?.result as boolean | undefined;
 
-  const [, , yesValue, noValue] = position || [0n, 0n, 0n, 0n];
+  const [, , yesValue, noValue] = position || [BigInt(0), BigInt(0), BigInt(0), BigInt(0)];
   const totalValue = yesValue + noValue;
   const claimFormatted = claimAmount ? (Number(claimAmount) / 1_000_000).toFixed(2) : "0.00";
-  const hasPendingClaim = status === 2 && !hasClaimed && claimAmount !== undefined && claimAmount > 0n;
+  const hasPendingClaim = status === 2 && !hasClaimed && claimAmount !== undefined && claimAmount > BigInt(0);
 
   const { writeContractAsync, isPending, data: txHash } = useWriteContract();
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
@@ -77,7 +77,7 @@ function PositionItem({
     }
   };
 
-  if (totalValue === 0n && status !== 2) return null;
+  if (totalValue === BigInt(0) && status !== 2) return null;
 
   const statusLabel = status === 2
     ? (hasClaimed ? "已领取" : hasPendingClaim ? "待领取" : "已结算")
@@ -99,13 +99,13 @@ function PositionItem({
         </div>
         <div className="flex items-center justify-between">
           <div className="flex gap-3">
-            {yesValue > 0n && (
+            {yesValue > BigInt(0) && (
               <div className="text-xs">
                 <span className="text-zinc-600">YES </span>
                 <span className="text-emerald-400 font-medium">{(Number(yesValue) / 1_000_000).toFixed(2)} U</span>
               </div>
             )}
-            {noValue > 0n && (
+            {noValue > BigInt(0) && (
               <div className="text-xs">
                 <span className="text-zinc-600">NO </span>
                 <span className="text-rose-400 font-medium">{(Number(noValue) / 1_000_000).toFixed(2)} U</span>
@@ -210,7 +210,7 @@ export default function ProfilePage() {
     address: FACTORY_ADDRESS,
     abi: FACTORY_ABI,
     functionName: "getMarkets",
-    args: [0n, 100n],
+    args: [BigInt(0), BigInt(100)],
     query: { refetchInterval: 30_000 },
   });
 
@@ -234,11 +234,11 @@ export default function ProfilePage() {
   const createdMarkets: Address[]  = [];
   const positionMarkets: Address[] = [];
   let pendingClaimCount = 0;
-  let creatorTotalVolume = 0n;
+  let creatorTotalVolume = BigInt(0);
 
   // FEE_CREATOR = 50, FEE_DENOM = 10000 → 0.5% 创建者手续费（与合约常量一致）
-  const FEE_CREATOR = 50n;
-  const FEE_DENOM   = 10000n;
+  const FEE_CREATOR = BigInt(50);
+  const FEE_DENOM   = BigInt(10000);
 
   if (marketDetails && address) {
     markets.forEach((addr, i) => {
@@ -249,7 +249,7 @@ export default function ProfilePage() {
         createdMarkets.push(addr);
         if (totalVolume) creatorTotalVolume += totalVolume;
       }
-      if (position && (position[0] > 0n || position[1] > 0n)) positionMarkets.push(addr);
+      if (position && (position[0] > BigInt(0) || position[1] > BigInt(0))) positionMarkets.push(addr);
     });
   }
 
