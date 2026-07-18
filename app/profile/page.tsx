@@ -184,7 +184,7 @@ function CreatedItem({ marketAddress }: { marketAddress: Address }) {
 
 // ── 主页面 ────────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
   const [activeTab, setActiveTab] = useState<"created" | "positions">("created");
   const [copied, setCopied] = useState(false);
 
@@ -199,6 +199,11 @@ export default function ProfilePage() {
     address,
     token: USDT_ADDRESS,
   });
+
+  // 原生代币余额（SEP / ETH，随当前链自动变化）
+  const { data: nativeBalance } = useBalance({ address });
+  const nativeSymbol = chain?.nativeCurrency?.symbol ?? "ETH";
+  const nativeFormatted = nativeBalance ? Number(nativeBalance.formatted).toFixed(4) : "0.0000";
 
   // 从工厂合约获取所有市场
   const { data: allMarkets } = useReadContract({
@@ -324,9 +329,18 @@ export default function ProfilePage() {
           </div>
           <div>
             <p className="text-sm text-zinc-400 mb-1">可用余额</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-white">{formattedBalance}</span>
-              <span className="text-indigo-400 font-medium">USDT</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-baseline gap-4">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-bold text-white">{nativeFormatted}</span>
+                  <span className="text-zinc-400 text-sm font-medium">{nativeSymbol}</span>
+                </div>
+                <span className="text-zinc-700 text-sm">·</span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-bold text-white">{formattedBalance}</span>
+                  <span className="text-indigo-400 text-sm font-medium">USDT</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
