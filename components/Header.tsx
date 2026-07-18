@@ -35,7 +35,7 @@ const SUPPORTED_CHAINS = [
 ];
 
 export default function Header() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
@@ -158,15 +158,17 @@ export default function Header() {
                                   <Copy className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300" />
                                 )}
                               </button>
-                              <a
-                                href={`https://sepolia.etherscan.io/address/${address}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex-shrink-0 p-0.5 rounded hover:bg-zinc-700 transition-colors"
-                                title="在 Etherscan 查看"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300" />
-                              </a>
+                              {chain?.blockExplorers?.default && (
+                                <a
+                                  href={`${chain.blockExplorers.default.url}/address/${address}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex-shrink-0 p-0.5 rounded hover:bg-zinc-700 transition-colors"
+                                  title={`在 ${chain.blockExplorers.default.name} 查看`}
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5 text-zinc-500 hover:text-zinc-300" />
+                                </a>
+                              )}
                             </div>
                             {/* USDT 余额 */}
                             <p className="text-xs text-zinc-400 mt-0.5">

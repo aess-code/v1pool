@@ -834,12 +834,12 @@ export default function MarketDetailPage() {
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-3 mb-4">
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs">
-                    <span className="text-zinc-600">手续费 (0.5%)</span>
-                    <span className="text-zinc-400">-{(parseFloat(amount) * 0.005).toFixed(4)} USDT</span>
+                    <span className="text-zinc-600">手续费 (1%)</span>
+                    <span className="text-zinc-400">-{(parseFloat(amount) * 0.01).toFixed(4)} USDT</span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-zinc-500 font-medium">{tab === "buy" ? "实际买入" : "实际到账"}</span>
-                    <span className="text-white font-medium">{(parseFloat(amount) * 0.995).toFixed(4)} USDT</span>
+                    <span className="text-white font-medium">{(parseFloat(amount) * 0.99).toFixed(4)} USDT</span>
                   </div>
                 </div>
               </div>
