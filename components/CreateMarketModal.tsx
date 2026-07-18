@@ -112,7 +112,8 @@ export default function CreateModal({
 
   const isProcessing = isPending || isConfirming || isSwitchingChain;
   const questionLength = question.length;
-  const isValid = questionLength > 5 && questionLength <= 300;
+  const descriptionLength = description.length;
+  const isValid = questionLength > 5 && questionLength <= 100;
   const isWrongChain = isConnected && chainId !== sepolia.id;
   const isContractMissing =
     !FACTORY_ADDRESS ||
@@ -206,7 +207,7 @@ export default function CreateModal({
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="例如：以太坊会在 2025 年突破 $5000 吗？"
               rows={3}
-              maxLength={300}
+              maxLength={100}
               disabled={isProcessing}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-3 text-sm text-white outline-none focus:border-zinc-600 resize-none placeholder:text-zinc-600 transition-colors"
             />
@@ -222,7 +223,7 @@ export default function CreateModal({
               >
                 {isValid ? "问题有效 ✓" : questionLength > 0 ? "至少 6 个字符" : "."}
               </span>
-              <span className="text-zinc-600">{questionLength}/300</span>
+              <span className={questionLength > 90 ? "text-amber-400" : "text-zinc-600"}>{questionLength}/100</span>
             </div>
           </div>
 
@@ -236,10 +237,14 @@ export default function CreateModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="补充背景信息，帮助参与者理解问题..."
-              rows={2}
+              rows={3}
+              maxLength={500}
               disabled={isProcessing}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-3 text-sm text-white outline-none focus:border-zinc-600 resize-none placeholder:text-zinc-600 transition-colors"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-3 text-sm text-white outline-none focus:border-zinc-600 resize-y min-h-[80px] max-h-[200px] placeholder:text-zinc-600 transition-colors"
             />
+            <div className="flex justify-end mt-1">
+              <span className={descriptionLength > 450 ? "text-xs text-amber-400" : "text-xs text-zinc-600"}>{descriptionLength}/500</span>
+            </div>
           </div>
 
           {/* 0.5% 手续费激励提示 */}
