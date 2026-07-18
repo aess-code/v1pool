@@ -281,7 +281,9 @@ export default function ProfilePage() {
   const displayAddress  = address
     ? address.substring(0, 6) + "..." + address.substring(address.length - 4)
     : "";
-  const formattedBalance = usdtBalance ? Number(usdtBalance.formatted).toFixed(2) : "0.00";
+  const formattedBalance = usdtBalance
+    ? Number(usdtBalance.formatted).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : "0.00";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 pb-20">
@@ -315,16 +317,18 @@ export default function ProfilePage() {
                   )}
                 </button>
                 <a
-                  href={`https://sepolia.etherscan.io/address/${address}`}
+                  href={chain?.blockExplorers?.default
+                    ? `${chain.blockExplorers.default.url}/address/${address}`
+                    : `https://sepolia.etherscan.io/address/${address}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                  title="在 Etherscan 查看"
+                  title={chain?.blockExplorers?.default ? `在 ${chain.blockExplorers.default.name} 查看` : "在 Etherscan 查看"}
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
-              <p className="text-sm text-indigo-400/80">Sepolia 测试网</p>
+              <p className="text-sm text-indigo-400/80">{chain?.name ?? "未知网络"}</p>
             </div>
           </div>
           <div>
