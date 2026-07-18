@@ -11,6 +11,7 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { USDT_ADDRESS, MARKET_ABI, FACTORY_ABI, FACTORY_ADDRESS } from "../../constants";
 import Link from "next/link";
 import {
@@ -26,6 +27,7 @@ import {
   Check,
   ExternalLink,
   Link2,
+  LogOut,
 } from "lucide-react";
 import { Address } from "viem";
 import { toast } from "sonner";
@@ -202,6 +204,7 @@ export default function ProfilePage() {
     56:       "BNB Chain",
   };
   const networkName = CHAIN_NAMES[chainId] ?? `Chain ${chainId}`;
+  const { disconnect } = useDisconnect();
   const [activeTab, setActiveTab] = useState<"created" | "positions">("created");
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
@@ -357,6 +360,30 @@ export default function ProfilePage() {
               <span className="text-3xl font-bold text-white">{formattedBalance}</span>
               <span className="text-indigo-400 font-medium">USDT</span>
             </div>
+          </div>
+          {/* 切换网络 + 退出登录 */}
+          <div className="flex items-center justify-between mt-5 pt-4 border-t border-indigo-500/20">
+            <ConnectButton.Custom>
+              {({ chain, openChainModal }) => (
+                <button
+                  onClick={openChainModal}
+                  className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-700/60 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {chain?.hasIcon && chain.iconUrl && (
+                    <img src={chain.iconUrl} alt={chain.name} className="w-3.5 h-3.5 rounded-full" />
+                  )}
+                  <span>{chain?.name ?? networkName}</span>
+                  <span className="text-zinc-600">▾</span>
+                </button>
+              )}
+            </ConnectButton.Custom>
+            <button
+              onClick={() => disconnect()}
+              className="flex items-center gap-1.5 text-xs text-rose-400/70 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              退出登录
+            </button>
           </div>
         </div>
 
