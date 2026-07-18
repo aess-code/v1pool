@@ -211,7 +211,7 @@ export default function ProfilePage() {
 
   const markets = (allMarkets as Address[] | undefined) || [];
 
-  // 读取每个市场的创建者和用户持仓（用于过滤）
+  // 读取每个市场的创建者、用户持仓、totalVolume（用于过滤和收益计算）
   const { data: marketDetails } = useReadContracts({
     contracts: markets.flatMap((addr) => [
       { address: addr, abi: MARKET_ABI, functionName: "creator" },
@@ -221,6 +221,7 @@ export default function ProfilePage() {
         functionName: "getUserPosition",
         args: address ? [address] : ["0x0000000000000000000000000000000000000000"],
       },
+      { address: addr, abi: MARKET_ABI, functionName: "totalVolume" },
     ]),
     query: { enabled: markets.length > 0 && !!address },
   });
@@ -228,15 +229,28 @@ export default function ProfilePage() {
   const createdMarkets: Address[]  = [];
   const positionMarkets: Address[] = [];
   let pendingClaimCount = 0;
+  let creatorTotalVolume = 0n;
+
+  // FEE_CREATOR = 50, FEE_DENOM = 10000 → 0.5% 创建者手续费（与合约常量一致）
+  const FEE_CREATOR = 50n;
+  const FEE_DENOM   = 10000n;
 
   if (marketDetails && address) {
     markets.forEach((addr, i) => {
-      const creator  = marketDetails[i * 2]?.result as Address | undefined;
-      const position = marketDetails[i * 2 + 1]?.result as [bigint, bigint, bigint, bigint] | undefined;
-      if (creator?.toLowerCase() === address.toLowerCase()) createdMarkets.push(addr);
+      const creator     = marketDetails[i * 3]?.result as Address | undefined;
+      const position    = marketDetails[i * 3 + 1]?.result as [bigint, bigint, bigint, bigint] | undefined;
+      const totalVolume = marketDetails[i * 3 + 2]?.result as bigint | undefined;
+      if (creator?.toLowerCase() === address.toLowerCase()) {
+        createdMarkets.push(addr);
+        if (totalVolume) creatorTotalVolume += totalVolume;
+      }
       if (position && (position[0] > 0n || position[1] > 0n)) positionMarkets.push(addr);
     });
   }
+
+  // 累计收益 = 创建市场总成交量 × 0.5%
+  const creatorEarnings = creatorTotalVolume * FEE_CREATOR / FEE_DENOM;
+  const creatorEarningsFormatted = (Number(creatorEarnings) / 1_000_000).toFixed(2);
 
   // ── 未连接钱包 ────────────────────────────────────────────────────────────
   if (!isConnected) {
@@ -339,7 +353,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* 创建者累计收益（占位，后续接链上数据）*/}
+        {/* 创建者累计收益（链上 totalVolume × 0.5%）*/}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
           <div className="flex items-center gap-2 text-zinc-400 mb-2">
             <TrendingUp className="w-4 h-4" />
@@ -347,12 +361,13 @@ export default function ProfilePage() {
           </div>
           <div className="flex items-center justify-between">
             <div className="text-2xl font-bold text-emerald-400">
-              +0.00 <span className="text-sm text-emerald-500/50 font-normal">USDT</span>
+              +{creatorEarningsFormatted} <span className="text-sm text-emerald-500/50 font-normal">USDT</span>
             </div>
             <div className="w-8 h-8 bg-emerald-500/10 rounded-full flex items-center justify-center">
               <span className="text-lg">💰</span>
             </div>
           </div>
+          <p className="text-xs text-zinc-600 mt-2">基于你创建的市场累计成交量 × 0.5% 手续费</p>
         </div>
 
         {/* 标签页 */}
