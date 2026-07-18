@@ -9,7 +9,10 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
   useAccount,
+  useChainId,
+  useSwitchChain,
 } from "wagmi";
+import { sepolia } from "wagmi/chains";
 import { useQueryClient } from "@tanstack/react-query";
 import { MARKET_ABI, USDT_ABI, USDT_ADDRESS, YES, NO } from "../../../constants";
 import { parseUnits, formatUnits, Address } from "viem";
@@ -244,6 +247,9 @@ export default function MarketDetailPage() {
   const searchParams = useSearchParams();
   const marketAddress = params.id as Address;
   const { address: userAddress, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
+  const isWrongChain = isConnected && chainId !== sepolia.id;
 
   // queryClient 用于静默刷新，不触发 DOM 重建
   const queryClient = useQueryClient();
@@ -631,7 +637,7 @@ export default function MarketDetailPage() {
               {isCreator && status === STATUS_OPEN && (
                 <button
                   onClick={() => setShowCloseConfirm(true)}
-                  disabled={isProcessing}
+                  disabled={isProcessing || isWrongChain}
                   className="flex items-center gap-1 text-xs text-zinc-500 hover:text-amber-400 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800"
                 >
                   <X className="w-3 h-3" />申请关闭
@@ -640,7 +646,7 @@ export default function MarketDetailPage() {
               {status === STATUS_CLOSING && daysLeft === 0 && (
                 <button
                   onClick={handleSettle}
-                  disabled={isProcessing}
+                  disabled={isProcessing || isWrongChain}
                   className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800 border border-amber-400/30"
                 >
                   {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
@@ -756,6 +762,26 @@ export default function MarketDetailPage() {
           </div>
         )}
 
+        {/* ── 错误网络横幅 ── */}
+        {isWrongChain && (
+          <div className="mb-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3.5 py-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-amber-300 font-medium">当前不在 Sepolia 测试网</p>
+              <p className="text-xs text-amber-400/70 mt-0.5">合约部署在 Sepolia，需要切换后才能进行交易</p>
+            </div>
+            <button
+              onClick={() => switchChain({ chainId: sepolia.id })}
+              disabled={isSwitchingChain}
+              className="flex-shrink-0 text-xs bg-amber-500 hover:bg-amber-400 text-black font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+            >
+              {isSwitchingChain ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : "切换"}
+            </button>
+          </div>
+        )}
+
         {/* ── 交易区（已结算时隐藏）── */}
         {status !== STATUS_SETTLED && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
@@ -850,6 +876,14 @@ export default function MarketDetailPage() {
                 <p className="text-sm text-zinc-500 mb-1">请先连接钱包</p>
                 <p className="text-xs text-zinc-600">点击右上角连接按钮</p>
               </div>
+            ) : isWrongChain ? (
+              <button
+                disabled
+                className="w-full bg-zinc-800 text-zinc-500 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-not-allowed"
+              >
+                <AlertTriangle className="w-4 h-4" />
+                请先切换到 Sepolia 测试网
+              </button>
             ) : tab === "buy" && needsApproval && amountBigInt > BigInt(0) ? (
               <button
                 onClick={handleApprove}
