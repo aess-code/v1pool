@@ -121,18 +121,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 pb-20">
       <Header />
-
-      {/* Mobile wallet tip banner */}
-      <div className="md:hidden bg-indigo-500/10 border-b border-indigo-500/20 px-4 py-3 flex items-start gap-3">
-        <span className="text-xl">💡</span>
-        <p className="text-sm text-indigo-200">
-          For the best experience, open Pulse inside{" "}
-          <span className="font-semibold text-indigo-400">OKX Wallet</span> or
-          MetaMask&apos;s built-in browser.
-        </p>
-      </div>
-
-<main className="max-w-3xl mx-auto px-4 pt-6">
+ 
 <div className="mb-8 flex justify-center overflow-hidden">
   <p
     className="
@@ -141,19 +130,18 @@ export default function HomePage() {
       sm:text-xs
       md:text-sm
       font-medium
-      tracking-[0.18em]
-      sm:tracking-[0.25em]
+      tracking-[0.25em]
       text-transparent
       bg-clip-text
       bg-gradient-to-r
       from-zinc-400
       via-indigo-400
       to-zinc-400
-      whitespace-nowrap
       opacity-90
+      whitespace-nowrap
     "
   >
-    V I E W . A N A L Y Z E . S T A K E . T O G E T H E R
+    VIEW. ANALYZE. STAKE. BELIEVE.
   </p>
 </div>
 
