@@ -9,7 +9,6 @@ import Header from "@/components/Header";
 import MarketCard, { MarketData } from "@/components/MarketCard";
 import CreateModal from "@/components/CreateMarketModal";
 import { Search, Plus, Loader2, Flame, Clock, Timer } from "lucide-react";
-import Image from "next/image";
 
 const MARKET_FETCH_LIMIT = 50n;
 const STATUS_CLOSING = 1;
@@ -117,50 +116,59 @@ export default function HomePage() {
   const handleCreateSuccess = useCallback(() => {
     queryClient.invalidateQueries();
   }, [queryClient]);
-<main className="max-w-3xl mx-auto px-4 pt-6">
 
-  <div className="mb-8 flex justify-center overflow-hidden">
-    <p
-      className="
-        text-center
-        text-[11px]
-        sm:text-xs
-        md:text-sm
-        font-medium
-        tracking-[0.25em]
-        text-transparent
-        bg-clip-text
-        bg-gradient-to-r
-        from-zinc-400
-        via-indigo-400
-        to-zinc-400
-        opacity-90
-        whitespace-nowrap
-      "
-    >
-      VIEW. ANALYZE. STAKE. BELIEVE.
-    </p>
-  </div>
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-50">
+      <Header />
 
-    <div className="relative flex-1">
-      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-      <input
-        type="text"
-        placeholder="Search views..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all"
-      />
-    </div>
+      {/* 顶部横幅位置的广告语（已移动到此处） */}
+      <div className="border-b border-zinc-800 bg-zinc-900/50 py-3">
+        <div className="max-w-3xl mx-auto px-4">
+          <p
+            className="
+              text-center
+              text-[11px]
+              sm:text-xs
+              md:text-sm
+              font-medium
+              tracking-[0.25em]
+              text-transparent
+              bg-clip-text
+              bg-gradient-to-r
+              from-zinc-400
+              via-indigo-400
+              to-zinc-400
+              opacity-90
+              whitespace-nowrap
+            "
+          >
+            VIEW. ANALYZE. STAKE. BELIEVE.
+          </p>
+        </div>
+      </div>
 
-    <button
-      onClick={() => setShowCreateModal(true)}
-      className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-colors active:scale-[0.98] shadow-lg shadow-indigo-500/20"
-    >
-      <Plus className="w-5 h-5" />
-      <span>Viewstake</span>
-    </button>
-  </div>
+      <main className="max-w-3xl mx-auto px-4 pt-6">
+        <div className="flex flex-col sm:flex-row gap-4 mb-8">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+            <input
+              type="text"
+              placeholder="Search views..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+            />
+          </div>
+
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-colors active:scale-[0.98] shadow-lg shadow-indigo-500/20"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Viewstake</span>
+          </button>
+        </div>
+
         <div className="space-y-6">
           {/* Sort tabs */}
           <div className="flex items-center gap-6 border-b border-zinc-800/80 pb-3">
