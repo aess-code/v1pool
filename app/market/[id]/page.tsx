@@ -311,7 +311,7 @@ export default function MarketDetailPage() {
   const isTie           = data?.[9]?.result as boolean | undefined;
 
   const confidencePercent = confidence !== undefined ? Number(confidence) / 100 : 50;
-  const tvlFormatted      = tvl !== undefined ? (Number(tvl) / 1_000_000).toFixed(2) : "0.00";
+  const tvlFormatted      = tvl !== undefined ? Number(tvl).toFixed(2) : "0.00";
   const daysLeft          = timeUntilSettle !== undefined && timeUntilSettle > BigInt(0)
     ? Math.ceil(Number(timeUntilSettle) / 86400) : 0;
 
@@ -708,13 +708,13 @@ export default function MarketDetailPage() {
               {yesBal > BigInt(0) && (
                 <div className="bg-emerald-400/5 border border-emerald-400/20 rounded-xl p-3">
                   <p className="text-xs text-emerald-500 mb-1">YES Position</p>
-                  <p className="text-sm font-bold text-emerald-400">{(Number(yesValue) / 1_000_000).toFixed(2)} USDT</p>
+                  <p className="text-sm font-bold text-emerald-400">{Number(yesValue).toFixed(2)} USDT</p>
                 </div>
               )}
               {noBal > BigInt(0) && (
                 <div className="bg-rose-400/5 border border-rose-400/20 rounded-xl p-3">
                   <p className="text-xs text-rose-500 mb-1">NO Position</p>
-                  <p className="text-sm font-bold text-rose-400">{(Number(noValue) / 1_000_000).toFixed(2)} USDT</p>
+                  <p className="text-sm font-bold text-rose-400">{Number(noValue).toFixed(2)} USDT</p>
                 </div>
               )}
             </div>
