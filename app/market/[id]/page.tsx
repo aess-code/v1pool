@@ -38,24 +38,11 @@ import Header from "../../../components/Header";
 type TradeTab = "buy" | "sell";
 type Side = "yes" | "no";
 
-const STATUS_OPEN    = 0;
+const STATUS_OPEN = 0;
 const STATUS_CLOSING = 1;
 const STATUS_SETTLED = 2;
 
-// TxProgressBar, ConfirmCloseModal, ClaimRewardModal 组件保持原样（此处省略，你直接复制粘贴到对应位置）
-function TxProgressBar({ isPending, isConfirming }: { isPending: boolean; isConfirming: boolean }) {
-  // ... 原代码不变 ...
-}
-
-function ConfirmCloseModal({ onConfirm, onCancel, isLoading }: { onConfirm: () => void; onCancel: () => void; isLoading: boolean; }) {
-  // ... 原代码不变 ...
-}
-
-function ClaimRewardModal({ amount, yesWins, isTie, onClaim, onDismiss, isLoading, isSuccess, question }: {
-  amount: string; yesWins: boolean; isTie: boolean; onClaim: () => void; onDismiss: () => void; isLoading: boolean; isSuccess: boolean; question?: string;
-}) {
-  // ... 原代码不变 ...
-}
+// TxProgressBar, ConfirmCloseModal, ClaimRewardModal 三个组件请保留你原来的代码（这里省略，粘贴时替换回去）
 
 export default function MarketDetailPage() {
   const params = useParams();
@@ -90,7 +77,7 @@ export default function MarketDetailPage() {
   useEffect(() => { isApprovingRef.current = isApproving; }, [isApproving]);
   useEffect(() => { isClaimingRef.current = isClaiming; }, [isClaiming]);
 
-  // 读取市场数据（保持不变）
+  // 市场数据读取（保持不变）
   const { data, isLoading } = useReadContracts({
     contracts: [
       { address: marketAddress, abi: MARKET_ABI, functionName: "question" },
@@ -183,7 +170,6 @@ export default function MarketDetailPage() {
 
   const isProcessing = isPending || isConfirming;
 
-  // 统一费用计算（与合约一致）
   const calculateFees = (usdtAmount: number, isBuy: boolean, currentStatus: number) => {
     if (usdtAmount <= 0) return { fee: 0, net: 0 };
     const creatorFeeRate = currentStatus === STATUS_OPEN ? 0.005 : 0;
@@ -218,12 +204,7 @@ export default function MarketDetailPage() {
     if (!amountBigInt) return;
     setIsApproving(true);
     try {
-      await writeContractAsync({
-        address: USDT_ADDRESS,
-        abi: USDT_ABI,
-        functionName: "approve",
-        args: [marketAddress, amountBigInt * 2n],
-      });
+      await writeContractAsync({ address: USDT_ADDRESS, abi: USDT_ABI, functionName: "approve", args: [marketAddress, amountBigInt * 2n] });
       toast.info("Waiting for approval...");
     } catch (err: any) {
       toast.error(err.shortMessage || err.message || "Approval failed");
@@ -241,7 +222,6 @@ export default function MarketDetailPage() {
       if (tab === "buy") {
         await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "buy", args: [sideValue, amountBigInt] });
       } else {
-        // Sell 需要 shares
         const currentBal = side === "yes" ? yesBal : noBal;
         const positionUSDT = Number(formatUnits(currentBal, 6));
         const inputUSDT = parseFloat(amount);
@@ -249,7 +229,7 @@ export default function MarketDetailPage() {
           toast.error("No position to sell");
           return;
         }
-        const sharesToSell = (currentBal * BigInt(Math.floor((inputUSDT / positionUSDT) * 1_000_000))) / BigInt(1_000_000);
+        const sharesToSell = (currentBal * BigInt(Math.floor((inputUSDT / positionUSDT) * 1000000))) / BigInt(1000000);
         await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "sell", args: [sideValue, sharesToSell] });
       }
       toast.info(`${tab.toUpperCase()} order submitted...`);
@@ -258,86 +238,30 @@ export default function MarketDetailPage() {
     }
   };
 
-  // 其他 handle 函数（handleRequestClose, handleSettle, handleClaim, handleShare）保持原样
-  const handleRequestClose = async () => { /* 原代码 */ };
-  const handleSettle = async () => { /* 原代码 */ };
-  const handleClaim = async () => { /* 原代码 */ };
-  const handleShare = () => { /* 原代码 */ };
+  // handleRequestClose, handleSettle, handleClaim, handleShare 保持你原来的代码
 
   const isCreator = userAddress && creator && userAddress.toLowerCase() === creator.toLowerCase();
 
   if (isLoading) {
-    return <div className="min-h-screen bg-zinc-950"><Header /><div className="flex items-center justify-center py-24"><Loader2 className="w-6 h-6 text-zinc-600 animate-spin" /></div></div>;
+    return (
+      <div className="min-h-screen bg-zinc-950">
+        <Header />
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-6 h-6 text-zinc-600 animate-spin" />
+        </div>
+      </div>
+    );
   }
-
-  // StatusBadge, SettlementBanner 等保持原样...
 
   return (
     <div className="min-h-screen bg-zinc-950">
       <TxProgressBar isPending={isPending} isConfirming={isConfirming} />
       <Header />
 
-      {/* 弹窗保持原样 */}
+      {/* 弹窗和页面其他内容保持你原来的代码 */}
 
-      <main className="max-w-2xl mx-auto px-4 pb-24">
-        {/* Back button, Welcome Banner, Market Info Card, My Position 等保持原样 */}
+      {/* 在交易区替换预估显示和 handleTrade 即可 */}
 
-        {/* 交易区 */}
-        {status !== STATUS_SETTLED && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-            {/* Tab, Side 选择保持原样 */}
-
-            <div className="mb-4">
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs text-zinc-500">{tab === "buy" ? "Amount to buy (USDT)" : "Amount to sell (USDT)"}</label>
-                {/* Balance 显示保持原样 */}
-              </div>
-              <div className="relative">
-                <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="..." />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600 font-medium">USDT</span>
-              </div>
-              {/* 快捷按钮保持原样 */}
-            </div>
-
-            {/* 修复后的预估显示 */}
-            {amount && parseFloat(amount) > 0 && (
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-3 mb-4">
-                <div className="space-y-1.5 text-xs">
-                  {tab === "buy" ? (
-                    (() => {
-                      const { fee, net } = calculateFees(parseFloat(amount), true, status || 0);
-                      return (
-                        <>
-                          <div className="flex justify-between"><span className="text-zinc-600">Input</span><span>{parseFloat(amount).toFixed(4)} USDT</span></div>
-                          <div className="flex justify-between"><span className="text-zinc-600">Fee</span><span className="text-rose-400">-{fee} USDT</span></div>
-                          <div className="flex justify-between border-t border-zinc-800 pt-1.5"><span className="text-emerald-400 font-medium">You pay (net)</span><span className="text-emerald-400">{net} USDT</span></div>
-                        </>
-                      );
-                    })()
-                  ) : (
-                    (() => {
-                      const positionUSDT = Number(formatUnits(side === "yes" ? yesBal : noBal, 6));
-                      const inputUSDT = parseFloat(amount);
-                      const { fee, net } = calculateFees(inputUSDT, false, status || 0);
-                      return (
-                        <>
-                          <div className="flex justify-between"><span className="text-zinc-600">Selling Value</span><span>{inputUSDT.toFixed(4)} USDT</span></div>
-                          <div className="flex justify-between"><span className="text-zinc-600">Fee</span><span className="text-rose-400">-{fee} USDT</span></div>
-                          <div className="flex justify-between border-t border-zinc-800 pt-1.5"><span className="text-emerald-400 font-medium">You receive</span><span className="text-emerald-400">{net} USDT</span></div>
-                        </>
-                      );
-                    })()
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 按钮区域保持原样，但 handleTrade 已修复 */}
-            {/* ... */}
-
-          </div>
-        )}
-      </main>
     </div>
   );
 }
