@@ -1,0 +1,306 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { IERC20 }          from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 }        from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IMarketVault }     from "../interfaces/IMarketVault.sol";
+
+/// @title MarketVault
+/// @notice Per-View isolated collateral custody vault for Pulse Protocol V1.
+///
+/// @dev One MarketVault is deployed per View by MarketVaultFactory.
+///      It is the ONLY contract that holds user collateral.
+///
+///      ── Responsibility Boundary ──────────────────────────────────────────
+///
+///      This contract IS responsible for:
+///        - Receiving collateral when users buy positions (deposit)
+///        - Returning collateral when users sell positions (withdraw)
+///        - Paying out settlement rewards to winners (settle)
+///
+///      This contract is NOT responsible for (and contains NO logic for):
+///        - Position Share balances or accounting  → TradingEngine
+///        - Pulse Index calculation or storage     → TradingEngine / PriceEngine
+///        - TWAP recording or reading              → TradingEngine / TWAPLibrary
+///        - Price Engine interaction               → TradingEngine
+///        - Market state machine                  → TradingEngine
+///        - Settlement decision logic             → SettlementManager
+///
+///      ── Authorization Model (immutable) ──────────────────────────────────
+///
+///        deposit() / withdraw()  → only authorizedTradingEngine
+///        settle()                → only authorizedSettlementManager
+///
+///      Forbidden (no code path exists for):
+///        - owner withdrawal
+///        - admin withdrawal
+///        - emergency rescue
+///        - arbitrary operator
+///        - upgrade proxy
+///        - pause / unpause
+///
+///      ── Collateral Token Constraint ──────────────────────────────────────
+///
+///      V1 ONLY supports standard ERC20 collateral (e.g. USDT, USDC).
+///      The following token types are explicitly NOT supported:
+///        - Fee-on-transfer tokens: received amount != sent amount → accounting drift
+///        - Rebasing tokens: balance changes without transfer → invariant violation
+///        - ERC777 / callback tokens: reentrancy risk via transfer hooks
+///
+///      The capital conservation invariant will detect and revert on any
+///      accounting drift caused by unsupported token behaviour.
+///
+///      ── Capital Conservation Invariant ───────────────────────────────────
+///
+///      After every state change, the following MUST hold:
+///
+///        IERC20(token).balanceOf(address(this))
+///          >= totalDeposits - totalWithdrawals - totalSettled
+///
+///      If the actual ERC20 balance is less than the tracked net assets,
+///      the transaction reverts with Vault__InvariantViolation.
+///      There is no admin override or rescue mechanism.
+contract MarketVault is IMarketVault, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Immutable State
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @inheritdoc IMarketVault
+    /// @dev Set at construction. Immutable. Used for event indexing and audit traceability.
+    uint256 public immutable override viewId;
+
+    /// @inheritdoc IMarketVault
+    /// @dev Immutable collateral token address. Cannot be changed after construction.
+    ///      V1 only supports standard ERC20. Fee-on-transfer, rebasing, and callback
+    ///      tokens are NOT supported.
+    address public immutable override token;
+
+    /// @notice The authorised TradingEngine address.
+    /// @dev Immutable. Only this address may call deposit() and withdraw().
+    ///      Set at construction by MarketVaultFactory. Cannot be changed.
+    address public immutable authorizedTradingEngine;
+
+    /// @notice The authorised SettlementManager address.
+    /// @dev Immutable. Only this address may call settle().
+    ///      Set at construction by MarketVaultFactory. Cannot be changed.
+    address public immutable authorizedSettlementManager;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Mutable Accounting State
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @inheritdoc IMarketVault
+    /// @dev Cumulative total of all collateral deposited via deposit().
+    ///      Monotonically increasing. Never decremented.
+    uint256 public override totalDeposits;
+
+    /// @inheritdoc IMarketVault
+    /// @dev Cumulative total of all collateral withdrawn via withdraw().
+    ///      Monotonically increasing. Never decremented.
+    uint256 public override totalWithdrawals;
+
+    /// @inheritdoc IMarketVault
+    /// @dev Cumulative total of all settlement payouts via settle().
+    ///      Monotonically increasing. Never decremented.
+    uint256 public override totalSettled;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Constructor
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice Deploy a new MarketVault for a specific View.
+    /// @dev Called exclusively by MarketVaultFactory.
+    ///      All address parameters are validated; any zero address reverts immediately.
+    ///      After construction, all four immutable fields are permanently fixed.
+    ///      There is no initialiser, no proxy, and no upgrade path.
+    ///
+    /// @param _viewId                  Unique ViewID this Vault belongs to.
+    /// @param _token                   Immutable collateral token address (standard ERC20 only).
+    /// @param _authorizedTradingEngine Address of the shared TradingEngine (immutable).
+    /// @param _authorizedSettlement    Address of the shared SettlementManager (immutable).
+    constructor(
+        uint256 _viewId,
+        address _token,
+        address _authorizedTradingEngine,
+        address _authorizedSettlement
+    ) {
+        if (_token                   == address(0)) revert Vault__ZeroAddress();
+        if (_authorizedTradingEngine == address(0)) revert Vault__ZeroAddress();
+        if (_authorizedSettlement    == address(0)) revert Vault__ZeroAddress();
+
+        viewId                      = _viewId;
+        token                       = _token;
+        authorizedTradingEngine     = _authorizedTradingEngine;
+        authorizedSettlementManager = _authorizedSettlement;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Modifiers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @dev Restricts the function to the authorised TradingEngine only.
+    ///      Reverts with Vault__UnauthorisedEngine for any other caller.
+    modifier onlyTradingEngine() {
+        if (msg.sender != authorizedTradingEngine) revert Vault__UnauthorisedEngine();
+        _;
+    }
+
+    /// @dev Restricts the function to the authorised SettlementManager only.
+    ///      Reverts with Vault__UnauthorisedSettlement for any other caller.
+    modifier onlySettlementManager() {
+        if (msg.sender != authorizedSettlementManager) revert Vault__UnauthorisedSettlement();
+        _;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // State-Changing Functions
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @inheritdoc IMarketVault
+    /// @dev Checks-Effects-Interactions pattern:
+    ///      1. CHECK  — caller is TradingEngine, amount > 0
+    ///      2. EFFECT — increment totalDeposits
+    ///      3. INTERACT — safeTransferFrom(TradingEngine → this Vault)
+    ///      4. VERIFY — _assertInvariant() confirms actual ERC20 balance >= tracked assets
+    ///
+    ///      The TradingEngine must have already pulled `amount` tokens from the user
+    ///      (via safeTransferFrom) before calling this function, and must have approved
+    ///      this Vault to pull from itself, OR the TradingEngine transfers directly to
+    ///      this Vault and calls deposit() to update accounting.
+    ///
+    ///      IMPORTANT: V1 only supports standard ERC20. If a fee-on-transfer token is used,
+    ///      the actual received amount will be less than `amount`, causing _assertInvariant()
+    ///      to revert with Vault__InvariantViolation.
+    function deposit(uint256 amount)
+        external
+        override
+        nonReentrant
+        onlyTradingEngine
+    {
+        // --- Checks ---
+        if (amount == 0) revert Vault__ZeroAmount();
+
+        // --- Effects ---
+        totalDeposits += amount;
+
+        // --- Interactions ---
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+
+        // --- Verify invariant ---
+        _assertInvariant();
+
+        emit Deposited(viewId, msg.sender, amount);
+    }
+
+    /// @inheritdoc IMarketVault
+    /// @dev Checks-Effects-Interactions pattern:
+    ///      1. CHECK  — caller is TradingEngine, to != zero, amount > 0, balance sufficient
+    ///      2. EFFECT — increment totalWithdrawals
+    ///      3. INTERACT — safeTransfer(this Vault → to)
+    ///      4. VERIFY — _assertInvariant()
+    ///
+    ///      Called by TradingEngine when a user sells their position shares.
+    ///      The amount to transfer is determined by TradingEngine based on the
+    ///      PriceEngine quote; this Vault does not compute or validate the amount.
+    function withdraw(address to, uint256 amount)
+        external
+        override
+        nonReentrant
+        onlyTradingEngine
+    {
+        // --- Checks ---
+        if (to     == address(0)) revert Vault__InvalidRecipient();
+        if (amount == 0)          revert Vault__ZeroAmount();
+        if (amount > balance())   revert Vault__InsufficientBalance();
+
+        // --- Effects ---
+        totalWithdrawals += amount;
+
+        // --- Interactions ---
+        IERC20(token).safeTransfer(to, amount);
+
+        // --- Verify invariant ---
+        _assertInvariant();
+
+        emit Withdrawn(viewId, to, amount);
+    }
+
+    /// @inheritdoc IMarketVault
+    /// @dev Checks-Effects-Interactions pattern:
+    ///      1. CHECK  — caller is SettlementManager, to != zero, amount > 0, balance sufficient
+    ///      2. EFFECT — increment totalSettled
+    ///      3. INTERACT — safeTransfer(this Vault → to)
+    ///      4. VERIFY — _assertInvariant()
+    ///
+    ///      Settlement idempotency (no double-claim per user) is enforced by SettlementManager
+    ///      via its own claimed[user][viewId] flag. This Vault does not track per-user claims.
+    ///      If SettlementManager calls settle() twice for the same user, it is SettlementManager's
+    ///      bug — this Vault will simply revert on the second call if balance is insufficient.
+    function settle(address to, uint256 amount)
+        external
+        override
+        nonReentrant
+        onlySettlementManager
+    {
+        // --- Checks ---
+        if (to     == address(0)) revert Vault__InvalidRecipient();
+        if (amount == 0)          revert Vault__ZeroAmount();
+        if (amount > balance())   revert Vault__InsufficientBalance();
+
+        // --- Effects ---
+        totalSettled += amount;
+
+        // --- Interactions ---
+        IERC20(token).safeTransfer(to, amount);
+
+        // --- Verify invariant ---
+        _assertInvariant();
+
+        emit Settled(viewId, to, amount);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // View Functions
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @inheritdoc IMarketVault
+    /// @dev Returns the actual ERC20 balance held by this contract via balanceOf().
+    ///      This is the ground-truth figure used by _assertInvariant().
+    ///      Accounting fields (totalDeposits, totalWithdrawals, totalSettled) are for
+    ///      audit and off-chain verification only.
+    function balance() public view override returns (uint256) {
+        return IERC20(token).balanceOf(address(this));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Internal Helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @dev Verify the capital conservation invariant after every state change.
+    ///
+    ///      Invariant:
+    ///        actualBalance >= trackedNetAssets
+    ///        where trackedNetAssets = totalDeposits - totalWithdrawals - totalSettled
+    ///
+    ///      The actual ERC20 balance (from balanceOf) is compared against the
+    ///      tracked net assets. If actualBalance < trackedNetAssets, the transaction
+    ///      reverts with Vault__InvariantViolation.
+    ///
+    ///      Acceptable condition: actualBalance > trackedNetAssets
+    ///        This occurs when tokens are sent directly to the Vault address (donation).
+    ///        Such "extra" tokens are permanently locked in the Vault — there is no
+    ///        mechanism to recover them. This is intentional and acceptable for V1.
+    ///
+    ///      Unacceptable condition: actualBalance < trackedNetAssets
+    ///        This indicates either:
+    ///          (a) A fee-on-transfer or rebasing token was used (unsupported in V1)
+    ///          (b) A critical accounting bug in this contract
+    ///        In either case, the transaction reverts. No admin override exists.
+    function _assertInvariant() internal view {
+        uint256 trackedNetAssets = totalDeposits - totalWithdrawals - totalSettled;
+        if (balance() < trackedNetAssets) revert Vault__InvariantViolation();
+    }
+}
