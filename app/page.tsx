@@ -9,7 +9,6 @@ import Header from "@/components/Header";
 import MarketCard, { MarketData } from "@/components/MarketCard";
 import CreateModal from "@/components/CreateMarketModal";
 import { Search, Plus, Loader2, Flame, Clock, Timer } from "lucide-react";
-import Image from "next/image";
 
 const MARKET_FETCH_LIMIT = 50n;
 const STATUS_CLOSING = 1;
@@ -119,36 +118,37 @@ export default function HomePage() {
   }, [queryClient]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 pb-20">
+    <div className="min-h-screen bg-zinc-950 text-zinc-50">
       <Header />
 
-      {/* Mobile wallet tip banner */}
-      <div className="md:hidden bg-indigo-500/10 border-b border-indigo-500/20 px-4 py-3 flex items-start gap-3">
-        <span className="text-xl">💡</span>
-        <p className="text-sm text-indigo-200">
-          For the best experience, open Pulse inside{" "}
-          <span className="font-semibold text-indigo-400">OKX Wallet</span> or
-          MetaMask&apos;s built-in browser.
-        </p>
+      {/* 顶部横幅位置的广告语（已移动到此处） */}
+      <div className="border-b border-zinc-800 bg-zinc-900/50 py-3">
+        <div className="max-w-3xl mx-auto px-4">
+          <p
+            className="
+              text-center
+              text-[11px]
+              sm:text-xs
+              md:text-sm
+              font-medium
+              tracking-[0.25em]
+              text-transparent
+              bg-clip-text
+              bg-gradient-to-r
+              from-zinc-400
+              via-indigo-400
+              to-zinc-400
+              opacity-90
+              whitespace-nowrap
+            "
+          >
+            VIEW. ANALYZE. STAKE. BELIEVE.
+          </p>
+        </div>
       </div>
 
       <main className="max-w-3xl mx-auto px-4 pt-6">
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <Image
-              src="/icon.svg"
-              alt="Pulse"
-              width={48}
-              height={48}
-              className="h-12 w-12 object-contain"
-              priority
-            />
-            <h1 className="text-3xl font-bold tracking-tight text-zinc-100">Pulse</h1>
-          </div>
-          <p className="text-zinc-400 text-base">Back your views with real conviction.</p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-4 mb-10">
+        <div className="flex flex-col sm:flex-row gap-4 mb-8">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
             <input
@@ -159,6 +159,7 @@ export default function HomePage() {
               className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-3.5 pl-12 pr-4 text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 transition-all"
             />
           </div>
+
           <button
             onClick={() => setShowCreateModal(true)}
             className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-colors active:scale-[0.98] shadow-lg shadow-indigo-500/20"

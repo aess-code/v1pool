@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -38,7 +38,7 @@ import Header from "../../../components/Header";
 type TradeTab = "buy" | "sell";
 type Side = "yes" | "no";
 
-const STATUS_OPEN    = 0;
+const STATUS_OPEN = 0;
 const STATUS_CLOSING = 1;
 const STATUS_SETTLED = 2;
 
@@ -100,7 +100,7 @@ function ConfirmCloseModal({
               This action is <span className="text-amber-400 font-semibold">irreversible</span>. After requesting, a
               <span className="text-white font-semibold"> 21-day</span> waiting period begins during which trading continues.
               Settlement happens automatically after 21 days based on the confidence index.
-              <span className="text-amber-400 font-semibold">You will no longer earn creator fees.</span>
+              <span className="text-amber-400 font-semibold"> You will no longer earn creator fees.</span>
             </p>
           </div>
         </div>
@@ -127,7 +127,7 @@ function ConfirmCloseModal({
   );
 }
 
-// ── 领取奖励浮层 ──────────────────────────────────────────────────────────────
+// ── 领取奖励弹窗 ──────────────────────────────────────────────────────────────
 function ClaimRewardModal({
   amount,
   yesWins,
@@ -220,9 +220,9 @@ function ClaimRewardModal({
           </p>
         </div>
         <div className="bg-zinc-950 border border-zinc-800 rounded-2xl px-5 py-4 my-4 text-center">
-            <p className="text-xs text-zinc-500 mb-1">
-              {isTie ? "Refund Amount" : "Claimable Reward"}
-            </p>
+          <p className="text-xs text-zinc-500 mb-1">
+            {isTie ? "Refund Amount" : "Claimable Reward"}
+          </p>
           <p className="text-3xl font-bold text-emerald-400">+{amount}</p>
           <p className="text-sm text-zinc-500 mt-0.5">USDT</p>
         </div>
@@ -251,11 +251,8 @@ export default function MarketDetailPage() {
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
   const isWrongChain = isConnected && chainId !== sepolia.id;
 
-  // queryClient 用于静默刷新，不触发 DOM 重建
   const queryClient = useQueryClient();
 
-  // ── 创建成功入场欢迎横幅 ───────────────────────────────────────────────────────
-  // 仅在 URL 携带 ?new=true 时显示，5 秒后自动消失
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(
     () => searchParams.get("new") === "true"
   );
@@ -275,14 +272,23 @@ export default function MarketDetailPage() {
   const [claimJustSucceeded, setClaimJustSucceeded] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
 
-  // ── 用 ref 记录 isApproving / isClaiming，避免 useEffect 依赖这两个 state ──
-  // 这是工业标准做法：在 effect 内读取 ref.current，不把 state 放进依赖数组
   const isApprovingRef = useRef(isApproving);
-  const isClaimingRef  = useRef(isClaiming);
+  const isClaimingRef = useRef(isClaiming);
   useEffect(() => { isApprovingRef.current = isApproving; }, [isApproving]);
-  useEffect(() => { isClaimingRef.current  = isClaiming;  }, [isClaiming]);
+  useEffect(() => { isClaimingRef.current = isClaiming; }, [isClaiming]);
 
-  // ── 读取市场基本信息 ──────────────────────────────────────────────────────────
+  // 切换选项卡或方向时自动清空输入框
+  const handleTabChange = (newTab: TradeTab) => {
+    setTab(newTab);
+    setAmount("");
+  };
+
+  const handleSideChange = (newSide: Side) => {
+    setSide(newSide);
+    setAmount("");
+  };
+
+  // ── 读取市场数据 ─────────────────────────────────────────────────────────────
   const { data, isLoading } = useReadContracts({
     contracts: [
       { address: marketAddress, abi: MARKET_ABI, functionName: "question" },
@@ -299,23 +305,32 @@ export default function MarketDetailPage() {
     query: { refetchInterval: 10_000 },
   });
 
-  const question        = data?.[0]?.result as string | undefined;
-  const description     = data?.[1]?.result as string | undefined;
-  const confidence      = data?.[2]?.result as bigint | undefined;
-  const tvl             = data?.[3]?.result as bigint | undefined;
-  const status          = data?.[4]?.result as number | undefined;
-  const createdAt       = data?.[5]?.result as bigint | undefined;
-  const creator         = data?.[6]?.result as Address | undefined;
+  const question = data?.[0]?.result as string | undefined;
+  const description = data?.[1]?.result as string | undefined;
+  const confidence = data?.[2]?.result as bigint | undefined;
+  const tvl = data?.[3]?.result as bigint | undefined;
+  const status = data?.[4]?.result as number | undefined;
+  const createdAt = data?.[5]?.result as bigint | undefined;
+  const creator = data?.[6]?.result as Address | undefined;
   const timeUntilSettle = data?.[7]?.result as bigint | undefined;
-  const settledYesWins  = data?.[8]?.result as boolean | undefined;
-  const isTie           = data?.[9]?.result as boolean | undefined;
+  const settledYesWins = data?.[8]?.result as boolean | undefined;
+  const isTie = data?.[9]?.result as boolean | undefined;
 
-  const confidencePercent = confidence !== undefined ? Number(confidence) / 100 : 50;
-  const tvlFormatted      = tvl !== undefined ? Number(tvl).toFixed(2) : "0.00";
-  const daysLeft          = timeUntilSettle !== undefined && timeUntilSettle > BigInt(0)
+  const confidencePercent = useMemo(() => {
+    if (confidence === undefined) return 50;
+    const rawVal = Number(confidence) / 100;
+    return Math.min(100, Math.max(0, rawVal));
+  }, [confidence]);
+
+  const tvlFormatted = useMemo(() => {
+    if (tvl === undefined) return "0.00";
+    return parseFloat(formatUnits(tvl, 6)).toFixed(2);
+  }, [tvl]);
+
+  const daysLeft = timeUntilSettle !== undefined && timeUntilSettle > BigInt(0)
     ? Math.ceil(Number(timeUntilSettle) / 86400) : 0;
 
-  // ── 读取用户持仓 ──────────────────────────────────────────────────────────────
+  // ── 读取用户持仓 ─────────────────────────────────────────────────────────────
   const { data: userPosition } = useReadContract({
     address: marketAddress,
     abi: MARKET_ABI,
@@ -324,9 +339,16 @@ export default function MarketDetailPage() {
     query: { enabled: !!userAddress, refetchInterval: 10_000 },
   });
 
-  const [yesBal, noBal, yesValue, noValue] = (userPosition as [bigint, bigint, bigint, bigint]) || [BigInt(0), BigInt(0), BigInt(0), BigInt(0)];
+  const [yesBal, noBal, yesValue, noValue] = useMemo(() => {
+    const pos = userPosition as [bigint, bigint, bigint, bigint] | undefined;
+    return pos || [BigInt(0), BigInt(0), BigInt(0), BigInt(0)];
+  }, [userPosition]);
 
-  // ── 读取可领取奖励 ────────────────────────────────────────────────────────────
+  // 当前选中方向的可用份额 (BigInt)
+  const currentSideSharesBigInt = side === "yes" ? yesBal : noBal;
+  const currentSideSharesFormatted = parseFloat(formatUnits(currentSideSharesBigInt, 6)).toFixed(2);
+
+  // ── 读取可领取奖励 ───────────────────────────────────────────────────────────
   const { data: claimAmount } = useReadContract({
     address: marketAddress,
     abi: MARKET_ABI,
@@ -343,10 +365,11 @@ export default function MarketDetailPage() {
     query: { enabled: !!userAddress && status === STATUS_SETTLED },
   });
 
-  const claimAmountFormatted = claimAmount
-    ? (Number(claimAmount as bigint) / 1_000_000).toFixed(2) : "0.00";
+  const claimAmountFormatted = useMemo(() => {
+    if (!claimAmount) return "0.00";
+    return parseFloat(formatUnits(claimAmount as bigint, 6)).toFixed(2);
+  }, [claimAmount]);
 
-  // ── 结算后自动弹出领取浮层 ────────────────────────────────────────────────────
   useEffect(() => {
     if (
       status === STATUS_SETTLED &&
@@ -361,7 +384,7 @@ export default function MarketDetailPage() {
     }
   }, [status, isConnected, hasClaimed, claimModalDismissed, claimAmount]);
 
-  // ── 读取 USDT 余额和授权 ──────────────────────────────────────────────────────
+  // ── 读取 USDT 余额和授权 ─────────────────────────────────────────────────────
   const { data: usdtBalance } = useReadContract({
     address: USDT_ADDRESS,
     abi: USDT_ABI,
@@ -378,30 +401,34 @@ export default function MarketDetailPage() {
     query: { enabled: !!userAddress, refetchInterval: 5_000 },
   });
 
-  const usdtBalanceFormatted = usdtBalance
-    ? parseFloat(formatUnits(usdtBalance as bigint, 6)).toFixed(2) : "0.00";
+  const usdtBalanceFormatted = useMemo(() => {
+    if (!usdtBalance) return "0.00";
+    return parseFloat(formatUnits(usdtBalance as bigint, 6)).toFixed(2);
+  }, [usdtBalance]);
 
-  const amountBigInt  = amount ? parseUnits(amount, 6) : BigInt(0);
-  const needsApproval = tab === "buy" && (allowance as bigint || BigInt(0)) < amountBigInt;
+  const amountBigInt = useMemo(() => {
+    if (!amount || isNaN(Number(amount))) return BigInt(0);
+    try {
+      return parseUnits(amount, 6);
+    } catch {
+      return BigInt(0);
+    }
+  }, [amount]);
 
-  // ── 写合约 ────────────────────────────────────────────────────────────────────
+  const needsApproval = tab === "buy" && ((allowance as bigint) || BigInt(0)) < amountBigInt;
+  const isSellExceedsBalance = tab === "sell" && amountBigInt > currentSideSharesBigInt;
+
+  // ── 写合约与交易等待 ─────────────────────────────────────────────────────────
   const { writeContractAsync, isPending, data: txHash, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
   const isProcessing = isPending || isConfirming;
 
-  // ── 交易成功处理 ──────────────────────────────────────────────────────────────
-  // 工业级写法：
-  // 1. 依赖数组只放原始值 [isConfirmed]，不放任何函数引用
-  // 2. 用 queryClient.invalidateQueries() 静默刷新，不触发 DOM 重建
-  // 3. 用 ref 读取 isApproving/isClaiming，避免闭包陷阱
-  // 4. reset() 用 setTimeout 延迟，让 wagmi 内部 receipt 订阅先完成清理
   useEffect(() => {
     if (!isConfirmed) return;
 
-    // 读取 ref 而非 state，避免把 state 放进依赖数组
     const wasApproving = isApprovingRef.current;
-    const wasClaiming  = isClaimingRef.current;
+    const wasClaiming = isClaimingRef.current;
 
     if (wasApproving) {
       toast.success("Approved! You can now buy.");
@@ -415,25 +442,20 @@ export default function MarketDetailPage() {
     }
 
     setAmount("");
-
-    // 用 queryClient 静默刷新本页所有链上数据，不重建任何 DOM
     queryClient.invalidateQueries();
 
-    // 延迟 reset，让 wagmi 内部的 receipt 订阅完成清理后再重置状态
-    // 避免 React 在 wagmi 还未完成内部清理时就卸载 hooks
     setTimeout(() => reset(), 200);
-
   }, [isConfirmed]); // eslint-disable-line react-hooks/exhaustive-deps
-  // ^ 只依赖 isConfirmed（原始 boolean），不依赖任何函数引用
-  // ^ queryClient 来自 useQueryClient()，其引用在整个 Provider 生命周期内稳定，但为安全起见仍不放入依赖
 
-  // ── 各种操作 ──────────────────────────────────────────────────────────────────
+  // ── 操作函数 ─────────────────────────────────────────────────────────────────
   const handleApprove = async () => {
     if (!amountBigInt) return;
     setIsApproving(true);
     try {
       await writeContractAsync({
-        address: USDT_ADDRESS, abi: USDT_ABI, functionName: "approve",
+        address: USDT_ADDRESS,
+        abi: USDT_ABI,
+        functionName: "approve",
         args: [marketAddress, amountBigInt * 2n],
       });
       toast.info("Waiting for approval confirmation...");
@@ -445,14 +467,32 @@ export default function MarketDetailPage() {
   };
 
   const handleTrade = async () => {
-    if (!amountBigInt || amountBigInt === BigInt(0)) { toast.error("Please enter an amount"); return; }
+    if (!amountBigInt || amountBigInt === BigInt(0)) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+    if (tab === "sell" && isSellExceedsBalance) {
+      toast.error("Insufficient share balance to sell");
+      return;
+    }
+
     const sideValue = BigInt(side === "yes" ? YES : NO);
     try {
       if (tab === "buy") {
-        await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "buy", args: [sideValue, amountBigInt] });
+        await writeContractAsync({
+          address: marketAddress,
+          abi: MARKET_ABI,
+          functionName: "buy",
+          args: [sideValue, amountBigInt],
+        });
         toast.info("Buy order submitted...");
       } else {
-        await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "sell", args: [sideValue, amountBigInt] });
+        await writeContractAsync({
+          address: marketAddress,
+          abi: MARKET_ABI,
+          functionName: "sell",
+          args: [sideValue, amountBigInt],
+        });
         toast.info("Sell order submitted...");
       }
     } catch (err: unknown) {
@@ -464,7 +504,11 @@ export default function MarketDetailPage() {
   const handleRequestClose = async () => {
     setShowCloseConfirm(false);
     try {
-      await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "initiateClose" });
+      await writeContractAsync({
+        address: marketAddress,
+        abi: MARKET_ABI,
+        functionName: "initiateClose",
+      });
       toast.info("Close request submitted. 21-day countdown started...");
     } catch (err: unknown) {
       const e = err as { shortMessage?: string; message?: string };
@@ -474,7 +518,11 @@ export default function MarketDetailPage() {
 
   const handleSettle = async () => {
     try {
-      await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "settle" });
+      await writeContractAsync({
+        address: marketAddress,
+        abi: MARKET_ABI,
+        functionName: "settle",
+      });
       toast.info("Settlement transaction submitted...");
     } catch (err: unknown) {
       const e = err as { shortMessage?: string; message?: string };
@@ -485,7 +533,11 @@ export default function MarketDetailPage() {
   const handleClaim = async () => {
     setIsClaiming(true);
     try {
-      await writeContractAsync({ address: marketAddress, abi: MARKET_ABI, functionName: "claim" });
+      await writeContractAsync({
+        address: marketAddress,
+        abi: MARKET_ABI,
+        functionName: "claim",
+      });
       toast.info("Claim submitted. Please confirm in your wallet...");
     } catch (err: unknown) {
       const e = err as { shortMessage?: string; message?: string };
@@ -544,9 +596,9 @@ export default function MarketDetailPage() {
         <span className="text-lg">🤝</span>
         <div>
           <p className="text-sm font-bold text-white">Tie — Refund</p>
-            <p className="text-xs text-zinc-400">
-              Confidence landed at exactly 50%. Your USDT stake will be refunded in full.
-            </p>
+          <p className="text-xs text-zinc-400">
+            Confidence landed at exactly 50%. Your USDT stake will be refunded in full.
+          </p>
         </div>
       </div>
     );
@@ -571,12 +623,9 @@ export default function MarketDetailPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* 顶部进度条 */}
       <TxProgressBar isPending={isPending} isConfirming={isConfirming} />
-
       <Header />
 
-      {/* 弹窗层 */}
       {showCloseConfirm && (
         <ConfirmCloseModal
           onConfirm={handleRequestClose}
@@ -610,7 +659,6 @@ export default function MarketDetailPage() {
           </Link>
         </div>
 
-        {/* ── 创建成功欢迎横幅 ── */}
         {showWelcomeBanner && (
           <div className="mb-4 flex items-center justify-between gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl px-4 py-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-center gap-3">
@@ -649,7 +697,7 @@ export default function MarketDetailPage() {
                   disabled={isProcessing || isWrongChain}
                   className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors px-2 py-1 rounded-lg hover:bg-zinc-800 border border-amber-400/30"
                 >
-                  {isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
+                  {isProcessing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Clock className="w-3 h-3" />}
                   Trigger Settlement
                 </button>
               )}
@@ -700,28 +748,42 @@ export default function MarketDetailPage() {
           </div>
         </div>
 
-        {/* ── 我的持仓 ── */}
+        {/* ── 我的持仓（增加份额 Shares 与估值 USDT 双重清晰展示） ── */}
         {isConnected && (yesBal > BigInt(0) || noBal > BigInt(0)) && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4">
-            <p className="text-xs font-medium text-zinc-500 mb-3">My Position</p>
+            <p className="text-xs font-medium text-zinc-500 mb-3">My Positions</p>
             <div className="grid grid-cols-2 gap-3">
               {yesBal > BigInt(0) && (
                 <div className="bg-emerald-400/5 border border-emerald-400/20 rounded-xl p-3">
-                  <p className="text-xs text-emerald-500 mb-1">YES Position</p>
-                  <p className="text-sm font-bold text-emerald-400">{Number(yesValue).toFixed(2)} USDT</p>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-medium text-emerald-500">YES Position</span>
+                    <span className="text-xs font-bold text-emerald-400">
+                      {parseFloat(formatUnits(yesBal, 6)).toFixed(2)} Shares
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400">
+                    ≈ {parseFloat(formatUnits(yesValue, 6)).toFixed(2)} USDT
+                  </p>
                 </div>
               )}
               {noBal > BigInt(0) && (
                 <div className="bg-rose-400/5 border border-rose-400/20 rounded-xl p-3">
-                  <p className="text-xs text-rose-500 mb-1">NO Position</p>
-                  <p className="text-sm font-bold text-rose-400">{Number(noValue).toFixed(2)} USDT</p>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-medium text-rose-500">NO Position</span>
+                    <span className="text-xs font-bold text-rose-400">
+                      {parseFloat(formatUnits(noBal, 6)).toFixed(2)} Shares
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400">
+                    ≈ {parseFloat(formatUnits(noValue, 6)).toFixed(2)} USDT
+                  </p>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* ── 已结算：领取区（浮层关闭后的兜底入口）── */}
+        {/* ── 已结算领取入口 ── */}
         {status === STATUS_SETTLED && isConnected && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4">
             {hasClaimed ? (
@@ -762,7 +824,7 @@ export default function MarketDetailPage() {
           </div>
         )}
 
-        {/* ── 错误网络横幅 ── */}
+        {/* ── 网络提示 ── */}
         {isWrongChain && (
           <div className="mb-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3.5 py-3">
             <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
@@ -775,50 +837,51 @@ export default function MarketDetailPage() {
               disabled={isSwitchingChain}
               className="flex-shrink-0 text-xs bg-amber-500 hover:bg-amber-400 text-black font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
             >
-              {isSwitchingChain ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : "Switch"}
+              {isSwitchingChain ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Switch"}
             </button>
           </div>
         )}
 
-        {/* ── 交易区（已结算时隐藏）── */}
+        {/* ── 交易区域（重整 Buy 与 Sell 差异逻辑） ── */}
         {status !== STATUS_SETTLED && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
             <div className="flex bg-zinc-950 rounded-xl p-1 mb-4">
               <button
-                onClick={() => setTab("buy")}
+                onClick={() => handleTabChange("buy")}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${tab === "buy" ? "bg-white text-zinc-950" : "text-zinc-500 hover:text-zinc-300"}`}
               >Buy</button>
               <button
-                onClick={() => setTab("sell")}
+                onClick={() => handleTabChange("sell")}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${tab === "sell" ? "bg-white text-zinc-950" : "text-zinc-500 hover:text-zinc-300"}`}
               >Sell</button>
             </div>
 
             <div className="flex gap-2 mb-4">
               <button
-                onClick={() => setSide("yes")}
+                onClick={() => handleSideChange("yes")}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${side === "yes" ? "bg-emerald-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"}`}
               >YES</button>
               <button
-                onClick={() => setSide("no")}
+                onClick={() => handleSideChange("no")}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${side === "no" ? "bg-rose-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"}`}
               >NO</button>
             </div>
 
             <div className="mb-4">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs text-zinc-500">{tab === "buy" ? "Amount to buy (USDT)" : "Amount to sell (USDT)"}</label>
+                <label className="text-xs text-zinc-500">
+                  {tab === "buy" ? "Amount to buy (USDT)" : `Amount to sell (${side.toUpperCase()} Shares)`}
+                </label>
                 {isConnected && (
                   <span className="text-xs text-zinc-600">
                     {tab === "buy"
                       ? `Balance: ${usdtBalanceFormatted} USDT`
-                      : `Position: ${parseFloat(formatUnits(side === "yes" ? yesBal : noBal, 6)).toFixed(2)} USDT`
+                      : `Available: ${currentSideSharesFormatted} Shares`
                     }
                   </span>
                 )}
               </div>
+
               <div className="relative">
                 <input
                   type="number"
@@ -828,16 +891,30 @@ export default function MarketDetailPage() {
                   min="0"
                   step="0.01"
                   disabled={isProcessing}
-                  className="w-full bg-zinc-950 border border-zinc-800 focus:border-zinc-600 rounded-xl px-3.5 py-3 text-sm outline-none text-white placeholder:text-zinc-600 transition-colors pr-16 disabled:opacity-50"
+                  className={`w-full bg-zinc-950 border rounded-xl px-3.5 py-3 text-sm outline-none text-white placeholder:text-zinc-600 transition-colors pr-24 disabled:opacity-50 ${
+                    isSellExceedsBalance ? "border-rose-500 focus:border-rose-400" : "border-zinc-800 focus:border-zinc-600"
+                  }`}
                 />
-                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-zinc-600 font-medium">USDT</span>
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-zinc-500 font-medium">
+                  {tab === "buy" ? "USDT" : `${side.toUpperCase()} Shares`}
+                </span>
               </div>
-              {/* 百分比快捷按钮 */}
+
+              {/* 份额/余额不足警告提示 */}
+              {isSellExceedsBalance && (
+                <p className="text-xs text-rose-400 mt-1">
+                  Exceeds your available {side.toUpperCase()} shares ({currentSideSharesFormatted})
+                </p>
+              )}
+
+              {/* 百分比快捷选择（Buy 基于 USDT 余额，Sell 基于持有份额） */}
               {isConnected && (() => {
                 const maxRaw = tab === "buy"
                   ? parseFloat(usdtBalanceFormatted)
-                  : parseFloat(formatUnits(side === "yes" ? yesBal : noBal, 6));
+                  : parseFloat(currentSideSharesFormatted);
+
                 if (maxRaw <= 0) return null;
+
                 return (
                   <div className="flex gap-1.5 mt-2">
                     {([25, 50, 75, 100] as const).map((pct) => (
@@ -845,7 +922,10 @@ export default function MarketDetailPage() {
                         key={pct}
                         type="button"
                         disabled={isProcessing}
-                        onClick={() => setAmount((maxRaw * pct / 100).toFixed(6).replace(/\.?0+$/, "") || "0")}
+                        onClick={() => {
+                          const val = (maxRaw * pct) / 100;
+                          setAmount(val > 0 ? val.toFixed(2) : "0");
+                        }}
                         className="flex-1 py-1 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 transition-colors disabled:opacity-40"
                       >
                         {pct === 100 ? "MAX" : `${pct}%`}
@@ -856,16 +936,23 @@ export default function MarketDetailPage() {
               })()}
             </div>
 
-            {amount && parseFloat(amount) > 0 && (
+            {/* 预估折算与手续费明细 */}
+            {amount && parseFloat(amount) > 0 && !isSellExceedsBalance && (
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-3 mb-4">
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs">
-                    <span className="text-zinc-600">Fee (1%)</span>
-                    <span className="text-zinc-400">-{(parseFloat(amount) * 0.01).toFixed(4)} USDT</span>
+                    <span className="text-zinc-600">Platform Fee (1%)</span>
+                    <span className="text-zinc-400">
+                      -{(parseFloat(amount) * 0.01).toFixed(4)} {tab === "buy" ? "USDT" : "Shares"}
+                    </span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-zinc-500 font-medium">{tab === "buy" ? "You receive" : "You receive"}</span>
-                    <span className="text-white font-medium">{(parseFloat(amount) * 0.99).toFixed(4)} USDT</span>
+                    <span className="text-zinc-500 font-medium">
+                      {tab === "buy" ? "Net Investment" : "Est. USDT Return"}
+                    </span>
+                    <span className="text-white font-medium">
+                      {(parseFloat(amount) * 0.99).toFixed(4)} USDT
+                    </span>
                   </div>
                 </div>
               </div>
@@ -899,15 +986,17 @@ export default function MarketDetailPage() {
             ) : (
               <button
                 onClick={handleTrade}
-                disabled={isProcessing || !amount || parseFloat(amount) <= 0}
+                disabled={isProcessing || !amount || parseFloat(amount) <= 0 || isSellExceedsBalance}
                 className={`w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] ${
                   side === "yes" ? "bg-emerald-500 hover:bg-emerald-400 text-white" : "bg-rose-500 hover:bg-rose-400 text-white"
                 }`}
               >
                 {isProcessing ? (
                   <><Loader2 className="w-4 h-4 animate-spin" />{isPending ? "Waiting for wallet..." : "Confirming on-chain..."}</>
+                ) : isSellExceedsBalance ? (
+                  "Insufficient Share Balance"
                 ) : (
-                  `${tab === "buy" ? "Buy" : "Sell"} ${side.toUpperCase()}`
+                  `${tab === "buy" ? "Buy" : "Sell"} ${side.toUpperCase()} ${tab === "sell" ? "Shares" : ""}`
                 )}
               </button>
             )}
