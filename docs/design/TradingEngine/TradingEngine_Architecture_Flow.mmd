@@ -1,0 +1,50 @@
+sequenceDiagram
+    participant U as User
+    participant ERC20 as ERC20 Token
+    participant TE as TradingEngine
+    participant PE as PriceEngine
+    participant Math as MathLibrary
+    participant TWAP as TWAPLibrary
+    participant FM as FeeManager
+    participant MV as MarketVault
+    participant SM as SettlementManager
+    participant PF as PulseFactory
+
+    Note over U, PF: BUY FLOW (ACTIVE State)
+    U->>TE: buy(viewId, side, amount)
+    TE->>PF: getViewRecord(viewId)
+    PF-->>TE: return (config)
+    TE->>PE: quoteBuy(supplies, reserve, amount)
+    PE->>Math: computeIndex(supplies)
+    Math-->>PE: return index
+    PE-->>TE: return (sharesOut, newIndex, newReserve)
+    TE->>FM: recordFee(viewId, feeAmount)
+    TE->>ERC20: safeTransferFrom(U, MV, netAmount)
+    TE->>MV: deposit(netAmount)
+    TE->>TWAP: tryRecordSnapshot(newIndex)
+    TE-->>U: emit Bought, PulseIndexUpdated
+
+    Note over U, PF: SELL FLOW (ACTIVE State)
+    U->>TE: sell(viewId, side, shares)
+    TE->>PE: quoteSell(supplies, reserve, shares)
+    PE->>Math: computeIndex(supplies)
+    Math-->>PE: return index
+    PE-->>TE: return (amountOut, newIndex, newReserve)
+    TE->>FM: recordFee(viewId, feeAmount)
+    TE->>MV: withdraw(U, netAmountOut)
+    TE->>TWAP: tryRecordSnapshot(newIndex)
+    TE-->>U: emit Sold, PulseIndexUpdated
+
+    Note over U, PF: LOCK FLOW (endTime reached)
+    U->>TE: lockMarket(viewId)
+    TE->>TWAP: finaliseTWAP()
+    TWAP-->>TE: return finalTWAP
+    TE->>TE: update status to LOCKED
+    TE-->>U: emit MarketLocked, TWAPFinalised
+
+    Note over U, PF: SETTLEMENT FLOW (LOCKED State)
+    SM->>TE: getTWAP(viewId)
+    TE-->>SM: return finalTWAP
+    SM->>TE: setMarketStatus(SETTLEMENT)
+    SM->>MV: settle(winners)
+    SM->>TE: setMarketStatus(CLAIMABLE)
