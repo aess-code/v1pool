@@ -4,7 +4,8 @@ pragma solidity ^0.8.20;
 /// @title ISettlementManager
 /// @notice Interface for the protocol's market settlement and reward claim module.
 /// @dev SettlementManager reads the finalised TWAP from TradingEngine and determines
-///      the winner. It does not calculate prices, modify trading state, or alter rules.
+///      the winner. It does not calculate prices or alter rules.
+///      It manages the SETTLEMENT state transition by calling TradingEngine.
 ///
 ///      Settlement rules (immutable per protocol V1):
 ///        TWAP > 5000 → For Wins
@@ -52,8 +53,8 @@ interface ISettlementManager {
     // Custom Errors
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// @notice Thrown when the market is not in SETTLEMENT status.
-    error Settlement__MarketNotInSettlement(uint256 viewId);
+    /// @notice Thrown when the market is not in LOCKED status when attempting settlement.
+    error Settlement__MarketNotLocked(uint256 viewId);
 
     /// @notice Thrown when the market is not in CLAIMABLE status.
     error Settlement__MarketNotClaimable(uint256 viewId);
@@ -77,16 +78,22 @@ interface ISettlementManager {
     /// @notice Execute settlement for a Fixed View that has been locked.
     /// @dev Reads the finalised TWAP from TradingEngine. Determines the result
     ///      and transitions the market to CLAIMABLE. Anyone may call this.
+    ///      Execution order:
+    ///        1. Call TradingEngine.setStatusSettlement().
+    ///        2. Determine result.
+    ///        3. Call TradingEngine.setStatusClaimable().
     /// @param viewId The ViewID to settle.
     function settleMarket(uint256 viewId) external;
 
     /// @notice Claim reward or refund after settlement on behalf of any user.
-    /// @dev Uses Checks-Effects-Interactions: claimed flag set before Vault payout.
+    /// @dev Uses Checks-Effects-Interactions:
+    ///        1. Verify CLAIMABLE status and user position.
+    ///        2. Call TradingEngine.markPositionClaimed() (Effect).
+    ///        3. Call Vault.settle() (Interaction).
     ///
-    ///      Permissionless Crank Design (Stage 4.5 Hardening):
+    ///      Permissionless Crank Design:
     ///        Anyone (Keeper, Bot, third party) may call this function for any user.
     ///        The payout is ALWAYS sent to `user` (the position holder), never to msg.sender.
-    ///        This enables automated settlement bots without requiring the user to be online.
     ///
     /// @param viewId The ViewID to claim from.
     /// @param user   Address of the position holder to claim for.
@@ -101,6 +108,7 @@ interface ISettlementManager {
     function getSettlementResult(uint256 viewId) external view returns (SettlementResult);
 
     /// @notice Returns whether a specific user has already claimed their reward.
+    /// @dev In V1 architecture freeze, this reads the claimStatus from TradingEngine.getPosition().
     /// @param viewId The ViewID to query.
     /// @param user   Address of the user.
     function hasClaimed(uint256 viewId, address user) external view returns (bool);
