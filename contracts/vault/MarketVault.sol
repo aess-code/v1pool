@@ -89,6 +89,17 @@ contract MarketVault is IMarketVault, ReentrancyGuard {
     address public immutable authorizedSettlementManager;
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Mutable Authorization State
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice The authorised FeeManager address.
+    /// @dev Set once by the Factory after deployment via setFeeManager().
+    ///      Cannot be changed after it is set. Enforced by Vault__FeeManagerAlreadySet.
+    ///      This design avoids adding a constructor parameter while preserving
+    ///      the one-time-set immutability semantics required by the protocol.
+    address public override authorizedFeeManager;
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Mutable Accounting State
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -106,6 +117,18 @@ contract MarketVault is IMarketVault, ReentrancyGuard {
     /// @dev Cumulative total of all settlement payouts via settle().
     ///      Monotonically increasing. Never decremented.
     uint256 public override totalSettled;
+
+    /// @inheritdoc IMarketVault
+    /// @dev Cumulative total of all fee releases via releaseFee().
+    ///      Monotonically increasing. Never decremented.
+    uint256 public override totalFeesReleased;
+
+    /// @inheritdoc IMarketVault
+    /// @dev Cumulative total of all fee obligations notified by the FeeManager via notifyFeeRecorded().
+    ///      Acts as the independent upper bound for releaseFee().
+    ///      Invariant: totalFeesReleased <= totalFeesRecorded (enforced in releaseFee).
+    ///      Monotonically increasing. Never decremented.
+    uint256 public override totalFeesRecorded;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Constructor
@@ -152,6 +175,15 @@ contract MarketVault is IMarketVault, ReentrancyGuard {
     ///      Reverts with Vault__UnauthorisedSettlement for any other caller.
     modifier onlySettlementManager() {
         if (msg.sender != authorizedSettlementManager) revert Vault__UnauthorisedSettlement();
+        _;
+    }
+
+    /// @dev Restricts the function to the authorised FeeManager only.
+    ///      Reverts with Vault__UnauthorisedFeeManager for any other caller.
+    ///      Also reverts with Vault__FeeManagerNotSet if setFeeManager() has not been called.
+    modifier onlyFeeManager() {
+        if (authorizedFeeManager == address(0)) revert Vault__FeeManagerNotSet();
+        if (msg.sender != authorizedFeeManager) revert Vault__UnauthorisedFeeManager();
         _;
     }
 
@@ -269,6 +301,91 @@ contract MarketVault is IMarketVault, ReentrancyGuard {
         emit Settled(viewId, to, amount);
     }
 
+    /// @inheritdoc IMarketVault
+    /// @dev Initialise the authorised FeeManager address. Can only be called once.
+    ///      This function is called by the Factory immediately after Vault deployment.
+    ///      After this call, the FeeManager address is permanently fixed.
+    ///
+    ///      Authorization: Only the authorised TradingEngine may call this function.
+    ///      (The Factory deploys the Vault and immediately calls setFeeManager via TradingEngine
+    ///       or directly, depending on the Factory design. In V1, the Factory is the deployer
+    ///       and calls this directly after deployment.)
+    ///
+    ///      Note: We use the TradingEngine as the caller guard here because the Factory
+    ///      is the only entity that deploys Vaults and knows the FeeManager address.
+    ///      In practice, the Factory calls this in the same transaction as deployment.
+    function setFeeManager(address feeManager) external override {
+        // Only the Factory (which deployed this Vault) should call this.
+        // We use the TradingEngine guard as a proxy: only the authorizedTradingEngine
+        // (which is set by the Factory at construction) is trusted to call this.
+        if (msg.sender != authorizedTradingEngine) revert Vault__UnauthorisedEngine();
+        if (authorizedFeeManager != address(0))    revert Vault__FeeManagerAlreadySet();
+        if (feeManager == address(0))              revert Vault__ZeroAddress();
+        authorizedFeeManager = feeManager;
+    }
+
+    /// @inheritdoc IMarketVault
+    /// @dev Releases accumulated fee collateral to a fee recipient.
+    ///      Only callable by the authorised FeeManager.
+    ///
+    ///      The FeeManager MUST zero the internal fee ledger BEFORE calling this function
+    ///      (Checks-Effects-Interactions in FeeManager). This Vault independently verifies
+    ///      that the cumulative released fees never exceed the cumulative recorded fees.
+    ///
+    ///      Checks-Effects-Interactions:
+    ///        1. CHECK  — caller is FeeManager, recipient != zero, amount > 0, balance sufficient
+    ///        2. CHECK  — totalFeesReleased + amount <= totalFeesRecorded (independent upper bound)
+    ///        3. EFFECT — increment totalFeesReleased
+    ///        4. INTERACT — safeTransfer(this Vault → recipient)
+    ///        5. VERIFY — _assertInvariant()
+    function releaseFee(address recipient, uint256 amount)
+        external
+        override
+        nonReentrant
+        onlyFeeManager
+    {
+        // --- Checks ---
+        if (recipient == address(0)) revert Vault__InvalidRecipient();
+        if (amount == 0)             revert Vault__ZeroAmount();
+        if (amount > balance())      revert Vault__InsufficientBalance();
+
+        // --- Independent fee quota check ---
+        // Ensures that cumulative fee releases never exceed cumulative fee recordings.
+        // This is the Vault-layer protection that does not depend on FeeManager correctness.
+        uint256 available = totalFeesRecorded - totalFeesReleased;
+        if (amount > available) {
+            revert Vault__FeeExceedsRecorded(amount, available);
+        }
+
+        // --- Effects ---
+        totalFeesReleased += amount;
+
+        // --- Interactions ---
+        IERC20(token).safeTransfer(recipient, amount);
+
+        // --- Verify invariant ---
+        _assertInvariant();
+
+        emit FeeReleased(viewId, recipient, amount);
+    }
+
+    /// @inheritdoc IMarketVault
+    /// @dev Called by the authorised FeeManager immediately after recordFee().
+    ///      Increments totalFeesRecorded, establishing the independent upper bound
+    ///      for future releaseFee() calls.
+    ///
+    ///      This function does NOT transfer tokens. It is a pure accounting notification.
+    ///      The physical fee tokens are already in the Vault (deposited by TradingEngine).
+    function notifyFeeRecorded(uint256 amount)
+        external
+        override
+        onlyFeeManager
+    {
+        if (amount == 0) revert Vault__ZeroAmount();
+        totalFeesRecorded += amount;
+        emit FeeRecordedNotified(viewId, amount);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // View Functions
     // ─────────────────────────────────────────────────────────────────────────
@@ -307,17 +424,16 @@ contract MarketVault is IMarketVault, ReentrancyGuard {
     ///          (b) A critical accounting bug in this contract
     ///        In either case, the transaction reverts. No admin override exists.
     function _assertInvariant() internal view {
-        // Invariant: balance() >= totalDeposits - totalWithdrawals - totalSettled
+        // Invariant: balance() >= totalDeposits - totalWithdrawals - totalSettled - totalFeesReleased
         //
         // Rewritten as addition to avoid Solidity 0.8.x checked-arithmetic underflow.
-        // The subtraction form can panic when totalWithdrawals + totalSettled is
-        // incremented (Effects) before the transfer reduces balance (Interactions),
-        // because the accounting update temporarily makes the subtraction underflow.
-        //
         // The addition form is mathematically equivalent and overflow-safe because
-        // balance(), totalWithdrawals, and totalSettled are all bounded by the actual
-        // ERC20 token supply (max uint256 / 2 in practice).
-        if (balance() + totalWithdrawals + totalSettled < totalDeposits) {
+        // all tracked values are bounded by the actual ERC20 token supply.
+        //
+        // totalFeesReleased is included because fee collateral physically resides in
+        // this Vault until claimed via releaseFee(). Each releaseFee() call reduces
+        // the actual balance, so it must be accounted for in the invariant.
+        if (balance() + totalWithdrawals + totalSettled + totalFeesReleased < totalDeposits) {
             revert Vault__InvariantViolation();
         }
     }

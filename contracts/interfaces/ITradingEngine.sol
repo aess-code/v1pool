@@ -152,6 +152,18 @@ interface ITradingEngine {
     /// @notice Thrown when a zero address is supplied for a required constructor argument.
     error TradingEngine__ZeroAddress();
 
+    /// @notice Thrown when the Vault address for a ViewID is not found (zero address).
+    error TradingEngine__VaultNotFound(uint256 viewId);
+
+    /// @notice Thrown when a function stub has not yet been implemented (Round 2/3 stubs).
+    error TradingEngine__NotImplemented();
+
+    /// @notice Thrown when PriceEngine returns an invalid output (zero shares, zero amount, or illegal index).
+    error TradingEngine__InvalidPriceEngineOutput(uint256 viewId);
+
+    /// @notice Thrown when the reserve balance is invalid after a trade (zero or overflow).
+    error TradingEngine__InvalidReserveBalance(uint256 viewId, uint256 reserve);
+
     // ─────────────────────────────────────────────────────────────────────────
     // State-Changing Functions
     // ─────────────────────────────────────────────────────────────────────────

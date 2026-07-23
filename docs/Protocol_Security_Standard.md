@@ -27,7 +27,7 @@ Every module is strictly limited to its defined responsibility. No module may ac
 | **PriceEngine** | Price calculation, Pulse Index calculation, Quote generation | Vault operations, token transfers, Position modification, Market state changes |
 | **TradingEngine** | Trade execution, Position accounting, Market state management | Bypassing PriceEngine to modify prices, directly modifying Settlement results |
 | **SettlementManager** | Reading final TWAP, determining result, triggering payouts | Modifying historical market rules, modifying user Positions |
-| **FeeManager** | Recording and distributing fees | Accessing Vault directly, modifying trade logic |
+| **FeeManager** | Recording fees, calling Vault.releaseFee() to distribute fees | Holding ERC20 funds, modifying trade logic |
 | **PulseFactory** | Creating Views, registering Vaults | Modifying existing View parameters after creation |
 
 ---
