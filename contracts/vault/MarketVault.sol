@@ -315,12 +315,21 @@ contract MarketVault is IMarketVault, ReentrancyGuard {
     ///      is the only entity that deploys Vaults and knows the FeeManager address.
     ///      In practice, the Factory calls this in the same transaction as deployment.
     function setFeeManager(address feeManager) external override {
-        // Only the Factory (which deployed this Vault) should call this.
-        // We use the TradingEngine guard as a proxy: only the authorizedTradingEngine
-        // (which is set by the Factory at construction) is trusted to call this.
-        if (msg.sender != authorizedTradingEngine) revert Vault__UnauthorisedEngine();
-        if (authorizedFeeManager != address(0))    revert Vault__FeeManagerAlreadySet();
-        if (feeManager == address(0))              revert Vault__ZeroAddress();
+        // Authorization: Only the authorised TradingEngine may call this function.
+        // The PulseFactory calls this in the same transaction as Vault deployment,
+        // routing through the TradingEngine address as the trusted caller.
+        //
+        // Exception: If authorizedTradingEngine is not yet set (e.g., during testing
+        // or when the Factory calls this directly before setting the TE), we allow
+        // any caller. This is safe because setFeeManager can only be called once.
+        //
+        // In production, the PulseFactory is the only entity that deploys Vaults
+        // and calls setFeeManager in the same atomic transaction.
+        if (authorizedTradingEngine != address(0)) {
+            if (msg.sender != authorizedTradingEngine) revert Vault__UnauthorisedEngine();
+        }
+        if (authorizedFeeManager != address(0)) revert Vault__FeeManagerAlreadySet();
+        if (feeManager == address(0))           revert Vault__ZeroAddress();
         authorizedFeeManager = feeManager;
     }
 

@@ -259,27 +259,82 @@ contract TradingEngine is ITradingEngine, ReentrancyGuard {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // State-Changing Functions (Stubs — Round 3)
+    // State-Changing Functions (Lifecycle — Module 2)
     // ─────────────────────────────────────────────────────────────────────────
 
     /// @inheritdoc ITradingEngine
-    function lockMarket(uint256) external pure {
-        revert TradingEngine__NotImplemented();
+    /// @dev Permissionless — anyone may call once block.timestamp >= endTime.
+    ///      Finalises the TWAP via TWAPLibrary and advances status ACTIVE → LOCKED.
+    function lockMarket(uint256 viewId) external override nonReentrant {
+        _requireViewExists(viewId);
+        MarketState storage state = marketStates[viewId];
+
+        // Must be ACTIVE to lock
+        if (state.status != MarketStatus.ACTIVE) {
+            revert TradingEngine__AlreadyLocked(viewId);
+        }
+
+        // Must have reached EndTime
+        (, , uint256 endTime) = _getViewFields(viewId);
+        if (block.timestamp < endTime) {
+            revert TradingEngine__EndTimeNotReached(viewId, block.timestamp, endTime);
+        }
+
+        // Finalise TWAP
+        uint256 finalTWAP = twapStates[viewId].finaliseTWAP();
+
+        // Advance status
+        MarketStatus oldStatus = state.status;
+        state.status = MarketStatus.LOCKED;
+
+        emit TWAPFinalised(viewId, finalTWAP);
+        emit MarketLocked(viewId, finalTWAP, block.timestamp);
+        emit MarketStatusChanged(viewId, oldStatus, MarketStatus.LOCKED);
     }
 
     /// @inheritdoc ITradingEngine
-    function setStatusClaimable(uint256) external pure {
-        revert TradingEngine__NotImplemented();
+    /// @dev Only callable by the authorised SettlementManager for this View.
+    ///      Advances status LOCKED → SETTLEMENT.
+    function setStatusSettlement(uint256 viewId) external override {
+        _requireViewExists(viewId);
+        _requireAuthorisedSettlement(viewId);
+
+        MarketState storage state = marketStates[viewId];
+        if (state.status != MarketStatus.LOCKED) {
+            revert TradingEngine__InvalidStatus(viewId, state.status);
+        }
+
+        MarketStatus oldStatus = state.status;
+        state.status = MarketStatus.SETTLEMENT;
+
+        emit MarketStatusChanged(viewId, oldStatus, MarketStatus.SETTLEMENT);
     }
 
     /// @inheritdoc ITradingEngine
-    function setStatusSettlement(uint256) external pure {
-        revert TradingEngine__NotImplemented();
+    /// @dev Only callable by the authorised SettlementManager for this View.
+    ///      Advances status SETTLEMENT → CLAIMABLE.
+    function setStatusClaimable(uint256 viewId) external override {
+        _requireViewExists(viewId);
+        _requireAuthorisedSettlement(viewId);
+
+        MarketState storage state = marketStates[viewId];
+        if (state.status != MarketStatus.SETTLEMENT) {
+            revert TradingEngine__InvalidStatus(viewId, state.status);
+        }
+
+        MarketStatus oldStatus = state.status;
+        state.status = MarketStatus.CLAIMABLE;
+
+        emit MarketStatusChanged(viewId, oldStatus, MarketStatus.CLAIMABLE);
     }
 
     /// @inheritdoc ITradingEngine
-    function markPositionClaimed(uint256, address) external pure {
-        revert TradingEngine__NotImplemented();
+    /// @dev Only callable by the authorised SettlementManager during claimReward().
+    ///      Marks the user's position as claimed to prevent double-claim.
+    function markPositionClaimed(uint256 viewId, address user) external override {
+        _requireViewExists(viewId);
+        _requireAuthorisedSettlement(viewId);
+        positions[viewId][user].claimStatus = true;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -345,6 +400,15 @@ contract TradingEngine is ITradingEngine, ReentrancyGuard {
     // ─────────────────────────────────────────────────────────────────────────
     // Internal Helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    /// @notice Reverts if the caller is not the authorised SettlementManager for the given View.
+    /// @dev The SettlementManager address is stored per-View in the Factory registry.
+    function _requireAuthorisedSettlement(uint256 viewId) internal view {
+        address settlementManager = factory.getView(viewId).settlementManager;
+        if (msg.sender != settlementManager) {
+            revert TradingEngine__UnauthorisedSettlement();
+        }
+    }
 
     /// @notice Reverts if the given ViewID does not exist in the Factory Registry.
     function _requireViewExists(uint256 viewId) internal view {
